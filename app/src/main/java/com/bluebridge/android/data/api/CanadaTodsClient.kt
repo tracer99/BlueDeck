@@ -1,5 +1,6 @@
 package com.bluebridge.android.data.api
 
+import android.util.Log
 import com.bluebridge.android.data.repository.Result
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -16,9 +17,13 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Hyundai / Kia Canada TODS JSON API (same paths, different host + Origin / Referer).
- * Reference: bluelinky `src/constants/canada.ts` and `CanadianController` / `CanadianVehicle`.
+ * Login and headers aligned with [hyundai_kia_connect_api](https://github.com/Hyundai-Kia-Connect/hyundai_kia_connect_api)
+ * (`v2/login`, `from: CWP`, `Deviceid`, client_id / client_secret).
  */
-class CanadaTodsClient(region: Region) {
+class CanadaTodsClient(
+    region: Region,
+    private val deviceId: String
+) {
 
     private val gson = Gson()
     private val origin: String = when (region) {
@@ -46,8 +51,13 @@ class CanadaTodsClient(region: Region) {
             addProperty("loginId", loginId)
             addProperty("password", password)
         }
-        executePost(url("/tods/api/lgn"), accessToken = "", vehicleId = null, pAuth = null, body = body)
-            .mapEnvelope { gson.fromJson(it, CaLoginResult::class.java) }
+        executePost(url("/tods/api/v2/login"), accessToken = "", vehicleId = null, pAuth = null, body = body)
+            .mapEnvelope { el ->
+                val obj = el.asJsonObject
+                val token = obj.get("token")?.takeUnless { it.isJsonNull }
+                    ?: return@mapEnvelope gson.fromJson(el, CaLoginResult::class.java)
+                gson.fromJson(token, CaLoginResult::class.java)
+            }
     }
 
     suspend fun vehicleList(accessToken: String): Result<CaVehicleListResult> = withContext(Dispatchers.IO) {
@@ -176,28 +186,46 @@ class CanadaTodsClient(region: Region) {
             val reqBuilder = Request.Builder()
                 .url(url)
                 .post(json.toRequestBody(JSON))
-                .header("Content-Type", "application/json")
-                .header("from", "SPA")
-                .header("language", "1")
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .header("Accept", "application/json, text/plain, */*")
+                .header("User-Agent", CA_USER_AGENT)
+                .header("from", "CWP")
+                .header("language", "0")
                 .header("offset", offsetHours())
-                .header("accessToken", accessToken)
+                .header("Deviceid", deviceId)
+                .header("client_id", CA_CLIENT_ID)
+                .header("client_secret", CA_CLIENT_SECRET)
                 .header("Origin", origin)
                 .header("Referer", refererLogin)
+            if (accessToken.isNotBlank()) {
+                reqBuilder.header("accessToken", accessToken)
+            }
             if (!vehicleId.isNullOrBlank()) reqBuilder.header("vehicleId", vehicleId)
             if (!pAuth.isNullOrBlank()) reqBuilder.header("pAuth", pAuth)
             val resp = client.newCall(reqBuilder.build()).execute()
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
+                Log.w(TAG, "Canada TODS HTTP ${resp.code} for $url bodySnippet=${text.take(300)}")
                 return Result.Error("HTTP ${resp.code}: ${text.take(200)}", resp.code)
             }
             val envelope = gson.fromJson(text, CaEnvelope::class.java)
             val code = envelope.responseHeader?.responseCode ?: 0
             if (code != 0) {
-                val desc = envelope.responseHeader?.responseDesc ?: "TODS error $code"
-                return Result.Error(desc, code)
+                val err = envelope.error
+                val message = when (err?.errorCode) {
+                    "7110" ->
+                        "This device must be verified once in the official Hyundai/Kia Canada app " +
+                            "(sign-in security code). After that, try BlueBridge again."
+                    "7404" -> err.errorDesc ?: "Wrong username or password"
+                    "7710" -> err.errorDesc ?: "Device ID not accepted"
+                    else -> err?.errorDesc ?: envelope.responseHeader?.responseDesc ?: "TODS error ($code)"
+                }
+                Log.w(TAG, "Canada TODS business error $code ${err?.errorCode} for $url: $message")
+                return Result.Error(message, code)
             }
             Result.Success(envelope)
         } catch (e: Exception) {
+            Log.w(TAG, "Canada TODS request failed: $url", e)
             Result.Error(e.message ?: "Network error")
         }
     }
@@ -229,6 +257,15 @@ class CanadaTodsClient(region: Region) {
     }
 
     private companion object {
+        private const val TAG = "CanadaTods"
         val JSON = "application/json; charset=utf-8".toMediaType()
+
+        /** Shared Canadian SPA credentials (hyundai_kia_connect_api KiaUvoApiCA). */
+        private const val CA_CLIENT_ID = "HATAHSPACA0232141ED9722C67715A0B"
+        private const val CA_CLIENT_SECRET = "CLISCR01AHSPA"
+
+        private const val CA_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/130.0.0.0 Mobile Safari/537.36"
     }
 }

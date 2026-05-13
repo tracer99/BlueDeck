@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluebridge.android.ui.components.ControlSection
 import com.bluebridge.android.data.models.*
+import com.bluebridge.android.ui.TemperatureDisplay
 import com.bluebridge.android.ui.theme.*
 import com.bluebridge.android.viewmodel.VehicleViewModel
 
@@ -35,6 +37,7 @@ fun StatusScreen(
     val commandState by vehicleViewModel.commandState.collectAsStateWithLifecycle()
     val statusError by vehicleViewModel.statusError.collectAsStateWithLifecycle()
     val isLoading by vehicleViewModel.isStatusLoading.collectAsStateWithLifecycle()
+    val temperatureUnitPref by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -42,7 +45,7 @@ fun StatusScreen(
                 title = { Text("Vehicle Status", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
@@ -138,7 +141,7 @@ fun StatusScreen(
                             if (s.airCtrlOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                         s.airTemp?.let { temp ->
                             StatusRow(Icons.Filled.Thermostat, "Set Temperature",
-                                "${temp.value}°${if (temp.unit == 0) "F" else "C"}", MaterialTheme.colorScheme.onSurface)
+                                TemperatureDisplay.formatVehicleAirTemp(temp, temperatureUnitPref), MaterialTheme.colorScheme.onSurface)
                         }
                         StatusRow(Icons.Filled.AcUnit, "Defrost",
                             if (s.defrost) "On" else "Off",
@@ -334,7 +337,8 @@ fun StatusScreen(
                                 StatusRow(Icons.Filled.Info, "Reserved Climate", if (fatc.airCtrl > 0) "On" else "Off", if (fatc.airCtrl > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                                 StatusRow(Icons.Filled.AcUnit, "Reserved Defrost", if (fatc.defrost) "On" else "Off", if (fatc.defrost) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                                 fatc.airTemp?.let { temp ->
-                                    StatusRow(Icons.Filled.Thermostat, "Reserved Temp", temp.value.ifBlank { "OFF" }, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f))
+                                    val label = if (temp.value.isBlank()) "OFF" else TemperatureDisplay.formatVehicleAirTemp(temp, temperatureUnitPref)
+                                    StatusRow(Icons.Filled.Thermostat, "Reserved Temp", label, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f))
                                 }
                             }
                         }

@@ -17,6 +17,7 @@ import com.bluebridge.android.data.repository.PreferencesManager
 import com.bluebridge.android.data.repository.Result
 import com.bluebridge.android.data.repository.SecureCredentialsManager
 import com.bluebridge.android.data.repository.VehicleRepository
+import com.bluebridge.android.ui.TemperatureDisplay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -317,6 +318,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
                     }
                     ACTION_CLIMATE -> {
                         val temp = preferencesManager.defaultClimateTemp.first()
+                        val tempUnit = preferencesManager.temperatureUnit.first()
                         val command = repository.startClimate(
                             vin = vehicle.vin,
                             tempF = temp,
@@ -326,7 +328,8 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
                             brandIndicator = vehicle.brandIndicator
                         )
                         if (command is Result.Success) {
-                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, "Cabin ${temp}°F", true)
+                            val label = TemperatureDisplay.formatHvacSetpoint(temp.toFloatOrNull() ?: 72f, tempUnit)
+                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, "Cabin $label", true)
                             refreshVehicleStatus(repository, preferencesManager, context, vehicle, "Climate sent from widget")
                         } else command
                     }

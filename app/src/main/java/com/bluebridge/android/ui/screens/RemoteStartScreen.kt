@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,9 +19,11 @@ import com.bluebridge.android.ui.components.CommandStatusBanner
 import com.bluebridge.android.ui.components.ControlSection
 import com.bluebridge.android.ui.components.ToggleControlRow
 import com.bluebridge.android.ui.components.SeatHeatSelector
+import com.bluebridge.android.ui.TemperatureDisplay
 import com.bluebridge.android.ui.theme.*
 import com.bluebridge.android.viewmodel.RemoteStartSettings
 import com.bluebridge.android.viewmodel.VehicleViewModel
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +36,7 @@ fun RemoteStartScreen(
     val commandState by vehicleViewModel.commandState.collectAsStateWithLifecycle()
     val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
     val isEV = vehicle?.isEV == true
+    val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -40,7 +44,7 @@ fun RemoteStartScreen(
                 title = { Text(if (isEV) "Climate Start" else "Remote Start", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -67,6 +71,9 @@ fun RemoteStartScreen(
 
                     AnimatedVisibility(visible = localSettings.hvacOn) {
                         Column {
+                            val sliderRange = TemperatureDisplay.hvacSliderRange(temperatureUnit)
+                            val sliderSteps = TemperatureDisplay.hvacSliderSteps(temperatureUnit)
+                            val tempFloat = localSettings.tempF.toFloatOrNull() ?: 72f
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -74,17 +81,21 @@ fun RemoteStartScreen(
                             ) {
                                 Text("Temperature", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                                 Text(
-                                    "${localSettings.tempF}°F",
+                                    TemperatureDisplay.formatHvacSetpoint(tempFloat, temperatureUnit),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                             Slider(
-                                value = localSettings.tempF.toFloatOrNull() ?: 72f,
-                                onValueChange = { localSettings = localSettings.copy(tempF = it.toInt().toString()) },
-                                valueRange = 62f..82f,
-                                steps = 19,
+                                value = TemperatureDisplay.sliderDisplayValue(tempFloat, temperatureUnit),
+                                onValueChange = {
+                                    localSettings = localSettings.copy(
+                                        tempF = TemperatureDisplay.setpointFahrenheitFromSlider(it, temperatureUnit).roundToInt().toString()
+                                    )
+                                },
+                                valueRange = sliderRange,
+                                steps = sliderSteps,
                                 colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                             )
                         }

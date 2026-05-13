@@ -5,6 +5,8 @@ import com.bluebridge.android.data.models.UiColorOverrides
 import com.bluebridge.android.data.models.UiColorSlot
 import com.bluebridge.android.data.models.WidgetVehicleSnapshot
 import android.content.Context
+import android.provider.Settings
+import android.util.Base64
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -14,6 +16,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
@@ -37,6 +41,8 @@ class PreferencesManager @Inject constructor(
         val SELECTED_VIN = stringPreferencesKey("selected_vin")
         val REGION = stringPreferencesKey("region")
         val REGION_SETUP_COMPLETED = booleanPreferencesKey("region_setup_completed")
+        /** Stable per install; Canadian TODS requires `Deviceid` (see hyundai_kia_connect_api KiaUvoApiCA). */
+        val CA_TODS_DEVICE_ID = stringPreferencesKey("ca_tods_device_id")
         val TEMPERATURE_UNIT = stringPreferencesKey("temp_unit")
         val DISTANCE_UNIT = stringPreferencesKey("distance_unit")
         val DARK_MODE = booleanPreferencesKey("dark_mode")
@@ -222,6 +228,23 @@ class PreferencesManager @Inject constructor(
 
     suspend fun tokenExpiryMillis(): Long =
         dataStore.data.first()[TOKEN_EXPIRES_AT] ?: 0L
+
+    /**
+     * Returns a stable device id for Canadian TODS (same encoding as hyundai_kia_connect_api:
+     * base64(ascii hex of a UUID), not standard base64 of raw UUID bytes).
+     */
+    suspend fun getOrCreateCanadaTodsDeviceId(): String {
+        val existing = dataStore.data.first()[CA_TODS_DEVICE_ID]
+        if (!existing.isNullOrBlank()) return existing
+        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+            ?: "unknown"
+        val seed = "${context.packageName}|$androidId"
+        val uuid = UUID.nameUUIDFromBytes(seed.toByteArray(StandardCharsets.UTF_8))
+        val hex = uuid.toString().replace("-", "")
+        val deviceId = Base64.encodeToString(hex.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+        dataStore.edit { it[CA_TODS_DEVICE_ID] = deviceId }
+        return deviceId
+    }
 
     suspend fun setTemperatureUnit(unit: String) {
         dataStore.edit { it[TEMPERATURE_UNIT] = unit }

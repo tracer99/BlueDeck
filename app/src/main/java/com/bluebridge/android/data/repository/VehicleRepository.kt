@@ -53,9 +53,10 @@ class VehicleRepository @Inject constructor(
     private suspend fun getCanadaClient(): CanadaTodsClient {
         val region = currentRegion()
         require(region.usesCanadianTods()) { "Not a Canadian TODS region" }
-        val key = region.name
+        val deviceId = preferencesManager.getOrCreateCanadaTodsDeviceId()
+        val key = "${region.name}|$deviceId"
         return cachedCanadaKey?.takeIf { it.first == key }?.second
-            ?: CanadaTodsClient(region).also { cachedCanadaKey = key to it }
+            ?: CanadaTodsClient(region, deviceId).also { cachedCanadaKey = key to it }
     }
 
     private suspend fun ensureCanadaSessionFresh() {
@@ -512,11 +513,8 @@ class VehicleRepository @Inject constructor(
                 val token = getToken()
                 val vehicleId = registrationId.ifBlank { vin }
                 val pin = getServicePin()
-                val tempUnit = preferencesManager.temperatureUnit.first()
-                val degC = when (tempUnit) {
-                    "C" -> tempF.toDoubleOrNull() ?: 22.0
-                    else -> CanadaClimateCodes.fahrenheitToCelsius(tempF.toDoubleOrNull() ?: 72.0)
-                }
+                // UI always supplies Fahrenheit setpoint; convert for Canadian TODS.
+                val degC = CanadaClimateCodes.fahrenheitToCelsius(tempF.toDoubleOrNull() ?: 72.0)
                 val tempCode = CanadaClimateCodes.celsiusToTempCode(degC)
                 val hvac = com.google.gson.JsonObject().apply {
                     addProperty("airCtrl", if (hvacOn || defrost) 1 else 0)

@@ -8,9 +8,15 @@ data class CaResponseHeader(
     @SerializedName("responseDesc") val responseDesc: String? = null
 )
 
+data class CaApiError(
+    @SerializedName("errorCode") val errorCode: String? = null,
+    @SerializedName("errorDesc") val errorDesc: String? = null
+)
+
 data class CaEnvelope(
     @SerializedName("responseHeader") val responseHeader: CaResponseHeader? = null,
-    @SerializedName("result") val result: JsonElement? = null
+    @SerializedName("result") val result: JsonElement? = null,
+    @SerializedName("error") val error: CaApiError? = null
 )
 
 data class CaLoginResult(

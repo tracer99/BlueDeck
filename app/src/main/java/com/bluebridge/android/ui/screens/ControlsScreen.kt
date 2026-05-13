@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluebridge.android.ui.components.ControlSection
 import com.bluebridge.android.ui.components.ToggleControlRow
+import com.bluebridge.android.ui.TemperatureDisplay
 import com.bluebridge.android.ui.theme.*
 import com.bluebridge.android.viewmodel.VehicleViewModel
 
@@ -26,6 +28,7 @@ fun ControlsScreen(
 ) {
     val status by vehicleViewModel.vehicleStatus.collectAsStateWithLifecycle()
     val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
+    val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     val isEV = vehicle?.isEV == true
     var pendingConfirmation by remember { mutableStateOf<ControlsConfirmationRequest?>(null) }
 
@@ -35,7 +38,7 @@ fun ControlsScreen(
                 title = { Text("Controls", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -69,7 +72,7 @@ fun ControlsScreen(
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen.copy(alpha = 0.15f)),
-                        border = ButtonDefaults.outlinedButtonBorder
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true)
                     ) {
                         Icon(Icons.Filled.Lock, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -141,6 +144,8 @@ fun ControlsScreen(
             ControlSection(title = if (isEV) "EV Climate Preconditioning" else "Climate Settings") {
                 var defrost by remember { mutableStateOf(false) }
                 var tempF by remember { mutableFloatStateOf(72f) }
+                val sliderRange = TemperatureDisplay.hvacSliderRange(temperatureUnit)
+                val sliderSteps = TemperatureDisplay.hvacSliderSteps(temperatureUnit)
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -150,17 +155,17 @@ fun ControlsScreen(
                     ) {
                         Text("Temperature", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                         Text(
-                            "${tempF.toInt()}°F",
+                            TemperatureDisplay.formatHvacSetpoint(tempF, temperatureUnit),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold
                         )
                     }
                     Slider(
-                        value = tempF,
-                        onValueChange = { tempF = it },
-                        valueRange = 62f..82f,
-                        steps = 19,
+                        value = TemperatureDisplay.sliderDisplayValue(tempF, temperatureUnit),
+                        onValueChange = { tempF = TemperatureDisplay.setpointFahrenheitFromSlider(it, temperatureUnit) },
+                        valueRange = sliderRange,
+                        steps = sliderSteps,
                         colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
                     )
 
@@ -182,7 +187,8 @@ fun ControlsScreen(
                                 pendingConfirmation = ControlsConfirmationRequest(
                                     title = "Start climate?",
                                     message = buildString {
-                                        append("Start cabin climate at ${selectedTemp}°F")
+                                        append("Start cabin climate at ")
+                                        append(TemperatureDisplay.formatHvacSetpoint(selectedTemp.toFloat(), temperatureUnit))
                                         if (selectedDefrost) append(" with defrost")
                                         append("?")
                                     },

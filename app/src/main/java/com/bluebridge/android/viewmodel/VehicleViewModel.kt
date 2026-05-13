@@ -317,26 +317,38 @@ class VehicleViewModel @Inject constructor(
         passengerSeat: Int = 2,
         rearLeftSeat: Int = 2,
         rearRightSeat: Int = 2
-    ) = sendCommand(
-        title = "Start climate",
-        loadingMsg = "Sending climate start…",
-        successMsg = "Climate on",
-        historyDetail = "Cabin ${tempF}°F${if (defrost) " · defrost" else ""}"
     ) {
-        val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
-        repository.startClimate(
-            vin = vehicle.vin,
-            tempF = tempF,
-            defrost = defrost,
-            driverSeatHeat = driverSeat,
-            passengerSeatHeat = passengerSeat,
-            rearLeftSeatHeat = rearLeftSeat,
-            rearRightSeatHeat = rearRightSeat,
-            isEv = vehicle.isEV,
-            registrationId = apiRegistration(vehicle),
-            generation = vehicle.generation,
-            brandIndicator = vehicle.brandIndicator
-        )
+        viewModelScope.launch {
+            val unit = preferencesManager.temperatureUnit.first()
+            val f = tempF.toFloatOrNull() ?: 72f
+            val historyDetail = if (unit == "C") {
+                val c = ((f - 32f) * 5f / 9f).roundToInt()
+                "Cabin ${c}°C${if (defrost) " · defrost" else ""}"
+            } else {
+                "Cabin ${f.roundToInt()}°F${if (defrost) " · defrost" else ""}"
+            }
+            sendCommand(
+                title = "Start climate",
+                loadingMsg = "Sending climate start…",
+                successMsg = "Climate on",
+                historyDetail = historyDetail
+            ) {
+                val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
+                repository.startClimate(
+                    vin = vehicle.vin,
+                    tempF = tempF,
+                    defrost = defrost,
+                    driverSeatHeat = driverSeat,
+                    passengerSeatHeat = passengerSeat,
+                    rearLeftSeatHeat = rearLeftSeat,
+                    rearRightSeatHeat = rearRightSeat,
+                    isEv = vehicle.isEV,
+                    registrationId = apiRegistration(vehicle),
+                    generation = vehicle.generation,
+                    brandIndicator = vehicle.brandIndicator
+                )
+            }
+        }
     }
 
     fun stopClimate() = sendCommand(

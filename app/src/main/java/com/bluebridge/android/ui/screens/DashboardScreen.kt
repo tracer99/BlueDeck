@@ -43,6 +43,7 @@ import com.bluebridge.android.data.models.CommandHistoryEntry
 import com.bluebridge.android.data.models.Vehicle
 import com.bluebridge.android.data.models.VehicleStatusData
 import com.bluebridge.android.ui.components.CommandStatusBanner
+import com.bluebridge.android.ui.TemperatureDisplay
 import com.bluebridge.android.ui.theme.*
 import com.bluebridge.android.viewmodel.CommandStatus
 import com.bluebridge.android.viewmodel.VehicleViewModel
@@ -76,6 +77,7 @@ fun DashboardScreen(
     val isStatusLoading by vehicleViewModel.isStatusLoading.collectAsStateWithLifecycle()
     val commandState by vehicleViewModel.commandState.collectAsStateWithLifecycle()
     val commandHistory by vehicleViewModel.commandHistory.collectAsStateWithLifecycle()
+    val temperatureUnitPref by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     var pendingConfirmation by remember { mutableStateOf<DashboardConfirmationRequest?>(null) }
 
     LaunchedEffect(Unit) {
@@ -266,11 +268,13 @@ fun DashboardScreen(
                         DashboardClimateControls(
                             vehicle = selectedVehicle,
                             status = vehicleStatus,
+                            userTemperatureUnit = temperatureUnitPref,
                             onStartClimate = { tempF, defrost, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat ->
                                 pendingConfirmation = DashboardConfirmationRequest(
                                     title = "Start climate?",
                                     message = buildString {
-                                        append("Start cabin climate at ${tempF}°F")
+                                        append("Start cabin climate at ")
+                                        append(TemperatureDisplay.formatHvacSetpoint(tempF.toFloat(), temperatureUnitPref))
                                         if (defrost) append(" with defrost")
                                         val seatSummary = listOf(
                                             "Driver" to driverSeat,
@@ -1368,6 +1372,7 @@ fun VehiclePickerDialog(
 fun DashboardClimateControls(
     vehicle: Vehicle?,
     status: VehicleStatusData?,
+    userTemperatureUnit: String,
     onStartClimate: (Int, Boolean, Int, Int, Int, Int) -> Unit,
     onStopClimate: () -> Unit,
     onManageSeatPresets: () -> Unit
@@ -1383,6 +1388,9 @@ fun DashboardClimateControls(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var seatPresets by remember { mutableStateOf(loadDashboardSeatClimatePresets(context)) }
+
+    val sliderRange = TemperatureDisplay.hvacSliderRange(userTemperatureUnit)
+    val sliderSteps = TemperatureDisplay.hvacSliderSteps(userTemperatureUnit)
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1456,17 +1464,17 @@ fun DashboardClimateControls(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "${tempF.toInt()}°F",
+                    TemperatureDisplay.formatHvacSetpoint(tempF, userTemperatureUnit),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
             Slider(
-                value = tempF,
-                onValueChange = { tempF = it },
-                valueRange = 62f..82f,
-                steps = 19,
+                value = TemperatureDisplay.sliderDisplayValue(tempF, userTemperatureUnit),
+                onValueChange = { tempF = TemperatureDisplay.setpointFahrenheitFromSlider(it, userTemperatureUnit) },
+                valueRange = sliderRange,
+                steps = sliderSteps,
                 colors = SliderDefaults.colors(
                     thumbColor = MaterialTheme.colorScheme.primary,
                     activeTrackColor = MaterialTheme.colorScheme.primary
