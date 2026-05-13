@@ -15,6 +15,7 @@ import com.bluebridge.android.data.models.VehicleStatusData
 import com.bluebridge.android.data.models.WidgetVehicleSnapshot
 import com.bluebridge.android.data.repository.PreferencesManager
 import com.bluebridge.android.data.repository.Result
+import com.bluebridge.android.data.repository.SecureCredentialsManager
 import com.bluebridge.android.data.repository.VehicleRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -263,7 +264,8 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
 
         private suspend fun handleWidgetAction(context: Context, action: String) {
             val preferencesManager = PreferencesManager(context.applicationContext)
-            val repository = VehicleRepository(preferencesManager)
+            val secureCredentialsManager = SecureCredentialsManager(context.applicationContext)
+            val repository = VehicleRepository(preferencesManager, secureCredentialsManager)
             val actionLabel = when (action) {
                 ACTION_REFRESH -> "Widget refresh"
                 ACTION_LOCK -> "Widget lock"

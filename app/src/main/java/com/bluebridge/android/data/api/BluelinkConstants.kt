@@ -5,12 +5,12 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
-import javax.inject.Singleton
 
 object BluelinkConstants {
     const val BASE_URL_US_HYUNDAI = "https://api.telematics.hyundaiusa.com/"
     const val BASE_URL_US_KIA = "https://kiaconnect.com/"
-    const val BASE_URL_CA_HYUNDAI = "https://api.hyundaicanada.com/"
+    const val BASE_URL_CA_HYUNDAI = "https://mybluelink.ca/"
+    const val BASE_URL_CA_KIA = "https://kiaconnect.ca/"
     const val BASE_URL_EU = "https://prd.eu-ccapi.hyundai.com:8080/"
     const val BASE_URL_AU = "https://prd.aus-ccapi.hyundai.com:8080/"
 
@@ -28,8 +28,33 @@ object BluelinkConstants {
     const val COMMAND_TIMEOUT_SECONDS = 60L
 }
 
-@Singleton
-class ApiClient(private val baseUrl: String = BluelinkConstants.BASE_URL_US_HYUNDAI) {
+data class UsSpaHeaders(
+    val clientId: String,
+    val clientSecret: String,
+    val appId: String?,
+    val apiHost: String,
+    val offset: String = "-5"
+) {
+    companion object {
+        val HYUNDAI = UsSpaHeaders(
+            clientId = BluelinkConstants.CLIENT_ID,
+            clientSecret = BluelinkConstants.CLIENT_SECRET,
+            appId = BluelinkConstants.APP_ID,
+            apiHost = BluelinkConstants.API_HOST
+        )
+        val KIA = UsSpaHeaders(
+            clientId = BluelinkConstants.KIA_CLIENT_ID,
+            clientSecret = BluelinkConstants.KIA_CLIENT_SECRET,
+            appId = null,
+            apiHost = "api.owners.kia.com"
+        )
+    }
+}
+
+class ApiClient(
+    private val baseUrl: String = BluelinkConstants.BASE_URL_US_HYUNDAI,
+    private val spaHeaders: UsSpaHeaders = UsSpaHeaders.HYUNDAI
+) {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -38,21 +63,21 @@ class ApiClient(private val baseUrl: String = BluelinkConstants.BASE_URL_US_HYUN
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(loggingInterceptor)
         .addInterceptor { chain ->
-            val request = chain.request().newBuilder()
+            val b = chain.request().newBuilder()
                 .addHeader("Accept", "application/json, text/plain, */*")
                 .addHeader("Accept-Encoding", "gzip, deflate, br")
                 .addHeader("User-Agent", "okhttp/4.12.0")
-                .addHeader("client_id", BluelinkConstants.CLIENT_ID)
-                .addHeader("clientSecret", BluelinkConstants.CLIENT_SECRET)
-                .addHeader("appId", BluelinkConstants.APP_ID)
+                .addHeader("client_id", spaHeaders.clientId)
+                .addHeader("clientSecret", spaHeaders.clientSecret)
                 .addHeader("deviceType", "Android")
                 .addHeader("from", "SPA")
                 .addHeader("language", "0")
-                .addHeader("offset", "-5")
+                .addHeader("offset", spaHeaders.offset)
                 .addHeader("to", "ISS")
                 .addHeader("encryptFlag", "false")
-                .build()
-            chain.proceed(request)
+            spaHeaders.appId?.let { b.addHeader("appId", it) }
+            b.addHeader("Host", spaHeaders.apiHost)
+            chain.proceed(b.build())
         }
         .connectTimeout(BluelinkConstants.TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(BluelinkConstants.TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -67,11 +92,17 @@ class ApiClient(private val baseUrl: String = BluelinkConstants.BASE_URL_US_HYUN
         .create(BluelinkApiService::class.java)
 }
 
-// Regional API configuration
 enum class Region(val baseUrl: String, val label: String) {
     US_HYUNDAI(BluelinkConstants.BASE_URL_US_HYUNDAI, "USA — Hyundai"),
     US_KIA(BluelinkConstants.BASE_URL_US_KIA, "USA — Kia"),
     CA_HYUNDAI(BluelinkConstants.BASE_URL_CA_HYUNDAI, "Canada — Hyundai"),
+    CA_KIA(BluelinkConstants.BASE_URL_CA_KIA, "Canada — Kia"),
     EU(BluelinkConstants.BASE_URL_EU, "Europe"),
     AU(BluelinkConstants.BASE_URL_AU, "Australia / New Zealand")
 }
+
+fun Region.usesCanadianTods(): Boolean =
+    this == Region.CA_HYUNDAI || this == Region.CA_KIA
+
+fun Region.usesUsSpa(): Boolean =
+    this == Region.US_HYUNDAI || this == Region.US_KIA

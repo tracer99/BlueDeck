@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluebridge.android.data.api.Region
 import com.bluebridge.android.data.models.AdditionalVehicleDetails
 import com.bluebridge.android.ui.theme.SuccessGreen
 import com.bluebridge.android.ui.theme.SurfaceCard
@@ -74,14 +75,16 @@ fun DigitalKeyScreen(
 ) {
     val context = LocalContext.current
     val selectedVehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
+    val accountRegion by vehicleViewModel.accountRegion.collectAsStateWithLifecycle()
     val details = selectedVehicle?.additionalDetails
     val deviceCapabilities = rememberDigitalKeyDeviceCapabilities(context)
-    val appInstallState = rememberDigitalKeyAppInstallState(context)
+    val appInstallState = rememberDigitalKeyAppInstallState(context, accountRegion)
     val setupText = buildDigitalKeySetupText(
         vehicleName = selectedVehicle?.displayName ?: "Selected vehicle",
         details = details,
         capabilities = deviceCapabilities,
-        appInstallState = appInstallState
+        appInstallState = appInstallState,
+        regionKey = accountRegion
     )
 
     Scaffold(
@@ -111,12 +114,13 @@ fun DigitalKeyScreen(
 
             DeviceCapabilityCard(capabilities = deviceCapabilities)
 
-            InstalledAppsCard(appInstallState = appInstallState)
+            InstalledAppsCard(appInstallState = appInstallState, regionKey = accountRegion)
 
             DigitalKeySetupCard(
                 details = details,
-                onOpenMyHyundai = { context.openPackageOrStore(MY_HYUNDAI_PACKAGE) },
-                onOpenHyundaiDigitalKey = { context.openPackageOrStore(HYUNDAI_DIGITAL_KEY_PACKAGE) },
+                regionKey = accountRegion,
+                onOpenPrimaryOfficial = { context.openPackageOrStore(primaryOfficialPackage(accountRegion)) },
+                onOpenSecondaryOfficial = { context.openPackageOrStore(secondaryOfficialPackage(accountRegion)) },
                 onOpenGoogleWallet = { context.openPackageOrStore(GOOGLE_WALLET_PACKAGE) },
                 onOpenGoogleWalletHelp = { context.openUrl(GOOGLE_WALLET_CAR_KEY_HELP_URL) },
                 onOpenNfcSettings = { context.openNfcSettings() },
@@ -212,7 +216,8 @@ private fun DeviceCapabilityCard(capabilities: DigitalKeyDeviceCapabilities) {
 }
 
 @Composable
-private fun InstalledAppsCard(appInstallState: DigitalKeyAppInstallState) {
+private fun InstalledAppsCard(appInstallState: DigitalKeyAppInstallState, regionKey: String) {
+    val hints = digitalKeyHints(regionKey)
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceCard),
         shape = RoundedCornerShape(20.dp),
@@ -223,11 +228,11 @@ private fun InstalledAppsCard(appInstallState: DigitalKeyAppInstallState) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("Official app availability", color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            StatusLine("MyHyundai with Bluelink", if (appInstallState.myHyundaiInstalled) "Installed" else "Missing", appInstallState.myHyundaiInstalled)
-            StatusLine("Hyundai Digital Key", if (appInstallState.hyundaiDigitalKeyInstalled) "Installed" else "Missing", appInstallState.hyundaiDigitalKeyInstalled)
+            StatusLine(hints.primaryListTitle, if (appInstallState.primaryOfficialInstalled) "Installed" else "Missing", appInstallState.primaryOfficialInstalled)
+            StatusLine(hints.secondaryListTitle, if (appInstallState.secondaryOfficialInstalled) "Installed" else "Missing", appInstallState.secondaryOfficialInstalled)
             StatusLine("Google Wallet", if (appInstallState.googleWalletInstalled) "Installed" else "Missing", appInstallState.googleWalletInstalled)
             Text(
-                text = "For newer Hyundai Digital Key 2 vehicles, start in MyHyundai or the vehicle head unit. For older Digital Key 1 vehicles, the standalone Hyundai Digital Key app may be required.",
+                text = hints.installedCardFootnote,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                 fontSize = 13.sp,
                 lineHeight = 17.sp
@@ -239,8 +244,9 @@ private fun InstalledAppsCard(appInstallState: DigitalKeyAppInstallState) {
 @Composable
 private fun DigitalKeySetupCard(
     details: AdditionalVehicleDetails?,
-    onOpenMyHyundai: () -> Unit,
-    onOpenHyundaiDigitalKey: () -> Unit,
+    regionKey: String,
+    onOpenPrimaryOfficial: () -> Unit,
+    onOpenSecondaryOfficial: () -> Unit,
     onOpenGoogleWallet: () -> Unit,
     onOpenGoogleWalletHelp: () -> Unit,
     onOpenNfcSettings: () -> Unit,
@@ -249,6 +255,7 @@ private fun DigitalKeySetupCard(
 ) {
     val digitalKeyType = details?.digitalKeyType?.trim().orEmpty()
     val setupTitle = if (digitalKeyType.isNotBlank()) "Set up $digitalKeyType" else "Set up your phone as a key"
+    val hints = digitalKeyHints(regionKey)
 
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceCard),
@@ -262,22 +269,22 @@ private fun DigitalKeySetupCard(
             Text(setupTitle, color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             SetupStep("1", "Make sure the physical key fob is inside the vehicle and the vehicle is on or in accessory mode.")
             SetupStep("2", "On the vehicle screen, open Setup → Vehicle → Digital Key → Smartphone Key, then choose Save, Pair, or Start Pairing.")
-            SetupStep("3", "Start the matching Hyundai flow from MyHyundai, Hyundai Digital Key, or the setup prompt shown on the vehicle screen.")
-            SetupStep("4", "Place the phone on the wireless charging pad/NFC reader when prompted, then finish the Wallet or Hyundai confirmation flow.")
+            SetupStep("3", hints.step3)
+            SetupStep("4", hints.step4)
 
             Spacer(Modifier.height(2.dp))
 
-            Button(onClick = onOpenMyHyundai, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onOpenPrimaryOfficial, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Key, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("Open MyHyundai")
+                Text(hints.primaryButton)
                 Spacer(Modifier.size(8.dp))
                 Icon(Icons.Filled.OpenInNew, null, modifier = Modifier.size(16.dp))
             }
-            OutlinedButton(onClick = onOpenHyundaiDigitalKey, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onOpenSecondaryOfficial, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Key, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text("Open Hyundai Digital Key")
+                Text(hints.secondaryButton)
             }
             OutlinedButton(onClick = onOpenGoogleWallet, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.CreditCard, null, modifier = Modifier.size(18.dp))
@@ -386,6 +393,61 @@ private fun SetupStep(number: String, text: String) {
     }
 }
 
+private data class DigitalKeyRegionHints(
+    val primaryListTitle: String,
+    val secondaryListTitle: String,
+    val primaryButton: String,
+    val secondaryButton: String,
+    val installedCardFootnote: String,
+    val step3: String,
+    val step4: String
+)
+
+private fun regionFromKey(regionKey: String): Region =
+    runCatching { Region.valueOf(regionKey) }.getOrDefault(Region.US_HYUNDAI)
+
+private fun primaryOfficialPackage(regionKey: String): String = when (regionFromKey(regionKey)) {
+    Region.US_KIA, Region.CA_KIA -> KIA_CONNECT_PACKAGE
+    else -> MY_HYUNDAI_PACKAGE
+}
+
+private fun secondaryOfficialPackage(regionKey: String): String = when (regionFromKey(regionKey)) {
+    Region.US_KIA, Region.CA_KIA -> KIA_CONNECT_PACKAGE
+    else -> HYUNDAI_DIGITAL_KEY_PACKAGE
+}
+
+private fun digitalKeyHints(regionKey: String): DigitalKeyRegionHints {
+    return when (regionFromKey(regionKey)) {
+        Region.US_KIA, Region.CA_KIA -> DigitalKeyRegionHints(
+            primaryListTitle = "Kia Connect",
+            secondaryListTitle = "Kia Connect (Digital Key)",
+            primaryButton = "Open Kia Connect",
+            secondaryButton = "Open Kia Connect",
+            installedCardFootnote = "Digital key pairing for Kia is handled in Kia Connect and Google Wallet on supported models.",
+            step3 = "Start the matching Kia flow from Kia Connect or the setup prompt on the vehicle screen.",
+            step4 = "Place the phone on the wireless charging pad or NFC reader when prompted, then complete Kia and Wallet confirmation steps."
+        )
+        Region.CA_HYUNDAI -> DigitalKeyRegionHints(
+            primaryListTitle = "MyHyundai (Canada)",
+            secondaryListTitle = "Hyundai Digital Key",
+            primaryButton = "Open MyHyundai / Bluelink",
+            secondaryButton = "Open Hyundai Digital Key",
+            installedCardFootnote = "Use the official Hyundai Canada / Bluelink app for your account, then Google Wallet if your vehicle supports phone-as-key.",
+            step3 = "Start the matching Hyundai flow from the official app for your region or the vehicle setup prompt.",
+            step4 = "Place the phone on the wireless charging pad/NFC reader when prompted, then finish Wallet or Hyundai confirmation."
+        )
+        else -> DigitalKeyRegionHints(
+            primaryListTitle = "MyHyundai with Bluelink",
+            secondaryListTitle = "Hyundai Digital Key",
+            primaryButton = "Open MyHyundai / Bluelink",
+            secondaryButton = "Open Hyundai Digital Key",
+            installedCardFootnote = "For newer Hyundai Digital Key 2 vehicles, start in MyHyundai or the vehicle head unit. For older Digital Key 1 vehicles, the standalone Hyundai Digital Key app may be required.",
+            step3 = "Start the matching Hyundai flow from MyHyundai, Hyundai Digital Key, or the setup prompt shown on the vehicle screen.",
+            step4 = "Place the phone on the wireless charging pad/NFC reader when prompted, then finish the Wallet or Hyundai confirmation flow."
+        )
+    }
+}
+
 private data class DigitalKeyDeviceCapabilities(
     val hasNfc: Boolean,
     val hasBle: Boolean,
@@ -394,8 +456,8 @@ private data class DigitalKeyDeviceCapabilities(
 )
 
 private data class DigitalKeyAppInstallState(
-    val myHyundaiInstalled: Boolean,
-    val hyundaiDigitalKeyInstalled: Boolean,
+    val primaryOfficialInstalled: Boolean,
+    val secondaryOfficialInstalled: Boolean,
     val googleWalletInstalled: Boolean
 )
 
@@ -412,10 +474,10 @@ private fun rememberDigitalKeyDeviceCapabilities(context: Context): DigitalKeyDe
 }
 
 @Composable
-private fun rememberDigitalKeyAppInstallState(context: Context): DigitalKeyAppInstallState {
+private fun rememberDigitalKeyAppInstallState(context: Context, regionKey: String): DigitalKeyAppInstallState {
     return DigitalKeyAppInstallState(
-        myHyundaiInstalled = context.canLaunchPackage(MY_HYUNDAI_PACKAGE),
-        hyundaiDigitalKeyInstalled = context.canLaunchPackage(HYUNDAI_DIGITAL_KEY_PACKAGE),
+        primaryOfficialInstalled = context.canLaunchPackage(primaryOfficialPackage(regionKey)),
+        secondaryOfficialInstalled = context.canLaunchPackage(secondaryOfficialPackage(regionKey)),
         googleWalletInstalled = context.canLaunchPackage(GOOGLE_WALLET_PACKAGE)
     )
 }
@@ -424,8 +486,10 @@ private fun buildDigitalKeySetupText(
     vehicleName: String,
     details: AdditionalVehicleDetails?,
     capabilities: DigitalKeyDeviceCapabilities,
-    appInstallState: DigitalKeyAppInstallState
+    appInstallState: DigitalKeyAppInstallState,
+    regionKey: String
 ): String = buildString {
+    val hints = digitalKeyHints(regionKey)
     appendLine("Digital Key setup notes for $vehicleName")
     appendLine()
     appendLine("Vehicle-reported Digital Key capable: ${details.digitalKeyCapableLabel()}")
@@ -439,15 +503,15 @@ private fun buildDigitalKeySetupText(
     appendLine("- Secure lock screen: ${if (capabilities.hasSecureLockScreen) "Ready" else "Missing"}")
     appendLine()
     appendLine("Installed official apps:")
-    appendLine("- MyHyundai with Bluelink: ${if (appInstallState.myHyundaiInstalled) "Installed" else "Missing"}")
-    appendLine("- Hyundai Digital Key: ${if (appInstallState.hyundaiDigitalKeyInstalled) "Installed" else "Missing"}")
+    appendLine("- ${hints.primaryListTitle}: ${if (appInstallState.primaryOfficialInstalled) "Installed" else "Missing"}")
+    appendLine("- ${hints.secondaryListTitle}: ${if (appInstallState.secondaryOfficialInstalled) "Installed" else "Missing"}")
     appendLine("- Google Wallet: ${if (appInstallState.googleWalletInstalled) "Installed" else "Missing"}")
     appendLine()
     appendLine("Setup path:")
     appendLine("1. Put the physical key fob inside the vehicle and turn the vehicle on or into accessory mode.")
     appendLine("2. On the vehicle screen, open Setup > Vehicle > Digital Key > Smartphone Key.")
     appendLine("3. Choose Save, Pair, or Start Pairing.")
-    appendLine("4. Start the matching setup flow in MyHyundai, Hyundai Digital Key, or Google Wallet.")
+    appendLine("4. ${hints.step3}")
     appendLine("5. Place the phone on the wireless charging pad/NFC reader when prompted.")
 }
 
@@ -515,6 +579,7 @@ private fun Context.copyToClipboard(label: String, text: String) {
 }
 
 private const val MY_HYUNDAI_PACKAGE = "com.stationdm.bluelink"
+private const val KIA_CONNECT_PACKAGE = "com.kia.connect"
 private const val HYUNDAI_DIGITAL_KEY_PACKAGE = "com.hyundaiusa.hyundai.digitalcarkey"
 private const val GOOGLE_WALLET_PACKAGE = "com.google.android.apps.walletnfcrel"
 private const val GOOGLE_WALLET_CAR_KEY_HELP_URL = "https://support.google.com/wallet/answer/12060041"

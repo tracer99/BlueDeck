@@ -11,6 +11,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import org.json.JSONArray
@@ -35,6 +36,7 @@ class PreferencesManager @Inject constructor(
         val PASSWORD_REQUIRED = booleanPreferencesKey("password_required")
         val SELECTED_VIN = stringPreferencesKey("selected_vin")
         val REGION = stringPreferencesKey("region")
+        val REGION_SETUP_COMPLETED = booleanPreferencesKey("region_setup_completed")
         val TEMPERATURE_UNIT = stringPreferencesKey("temp_unit")
         val DISTANCE_UNIT = stringPreferencesKey("distance_unit")
         val DARK_MODE = booleanPreferencesKey("dark_mode")
@@ -101,6 +103,17 @@ class PreferencesManager @Inject constructor(
     val region: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[REGION] ?: "US_HYUNDAI" }
+
+    /**
+     * First-launch region onboarding. When the key is absent, treat as completed for users who
+     * already have login state (upgrade migration); new installs see onboarding until they confirm.
+     */
+    val regionSetupCompleted: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { prefs ->
+            prefs[REGION_SETUP_COMPLETED]
+                ?: (prefs[ACCESS_TOKEN]?.isNotBlank() == true || prefs[USERNAME]?.isNotBlank() == true)
+        }
 
     val temperatureUnit: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -202,6 +215,13 @@ class PreferencesManager @Inject constructor(
     suspend fun setRegion(region: String) {
         dataStore.edit { it[REGION] = region }
     }
+
+    suspend fun setRegionSetupCompleted(completed: Boolean) {
+        dataStore.edit { it[REGION_SETUP_COMPLETED] = completed }
+    }
+
+    suspend fun tokenExpiryMillis(): Long =
+        dataStore.data.first()[TOKEN_EXPIRES_AT] ?: 0L
 
     suspend fun setTemperatureUnit(unit: String) {
         dataStore.edit { it[TEMPERATURE_UNIT] = unit }

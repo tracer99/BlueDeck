@@ -1,12 +1,16 @@
 package com.bluebridge.android.data.repository
 
 import com.bluebridge.android.data.api.ApiClient
-import com.bluebridge.android.data.api.BluelinkConstants
+import com.bluebridge.android.data.api.CanadaClimateCodes
+import com.bluebridge.android.data.api.CanadaStatusMapper
+import com.bluebridge.android.data.api.CanadaTodsClient
+import com.bluebridge.android.data.api.CaVehicleJson
 import com.bluebridge.android.data.api.Region
+import com.bluebridge.android.data.api.UsSpaHeaders
+import com.bluebridge.android.data.api.usesCanadianTods
 import com.bluebridge.android.data.models.*
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
-import java.util.UUID
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.ResponseBody
@@ -21,18 +25,61 @@ sealed class Result<out T> {
 
 @Singleton
 class VehicleRepository @Inject constructor(
-    private val preferencesManager: PreferencesManager
+    private val preferencesManager: PreferencesManager,
+    private val secureCredentialsManager: SecureCredentialsManager
 ) {
-    private var apiClient: ApiClient? = null
+    private var cachedSpaKey: Pair<String, ApiClient>? = null
+    private var cachedCanadaKey: Pair<String, CanadaTodsClient>? = null
+
+    private suspend fun currentRegion(): Region =
+        Region.valueOf(preferencesManager.region.first())
 
     private suspend fun getApiService() = run {
-        val regionStr = preferencesManager.region.first()
-        val region = Region.valueOf(regionStr)
-        if (apiClient == null) {
-            apiClient = ApiClient(region.baseUrl)
+        val region = currentRegion()
+        if (region.usesCanadianTods()) {
+            error("US SPA API not used for Canadian regions")
         }
-        apiClient!!.apiService
+        val key = region.name
+        val client = cachedSpaKey?.takeIf { it.first == key }?.second ?: ApiClient(
+            baseUrl = region.baseUrl,
+            spaHeaders = when (region) {
+                Region.US_KIA -> UsSpaHeaders.KIA
+                else -> UsSpaHeaders.HYUNDAI
+            }
+        ).also { cachedSpaKey = key to it }
+        client.apiService
     }
+
+    private suspend fun getCanadaClient(): CanadaTodsClient {
+        val region = currentRegion()
+        require(region.usesCanadianTods()) { "Not a Canadian TODS region" }
+        val key = region.name
+        return cachedCanadaKey?.takeIf { it.first == key }?.second
+            ?: CanadaTodsClient(region).also { cachedCanadaKey = key to it }
+    }
+
+    private suspend fun ensureCanadaSessionFresh() {
+        val region = currentRegion()
+        if (!region.usesCanadianTods()) return
+        val exp = preferencesManager.tokenExpiryMillis()
+        if (exp > System.currentTimeMillis() + 120_000L) return
+        val creds = secureCredentialsManager.getSavedCredentials() ?: return
+        login(creds.username, creds.password, creds.servicePin)
+    }
+
+    private fun CaVehicleJson.toVehicle(region: Region): Vehicle = Vehicle(
+        vin = vin,
+        vehicleIdentifier = vehicleId,
+        regId = regid,
+        generation = genType.ifBlank { "3" },
+        nickname = nickName,
+        modelName = modelName,
+        modelYear = modelYear,
+        modelCode = modelCode,
+        brandIndicator = brandIndicator.ifBlank {
+            if (region == Region.CA_KIA) "K" else "H"
+        }
+    )
 
     private suspend fun getToken() = preferencesManager.accessToken.first()
         ?: throw IllegalStateException("Not authenticated")
@@ -150,29 +197,50 @@ class VehicleRepository @Inject constructor(
 
     suspend fun login(username: String, password: String, servicePin: String = ""): Result<Unit> {
         return try {
-            val response = getApiService().getToken(
-                LoginRequest(username = username, password = password)
-            )
-            if (response.isSuccessful) {
-                val token = response.body() ?: return Result.Error("Empty response")
-                preferencesManager.saveSession(
-                    accessToken = token.accessToken,
-                    refreshToken = token.refreshToken,
-                    username = username,
-                    expiresIn = token.expiresIn.toIntOrNull() ?: 1799,
-                    servicePin = servicePin
-                )
-                Result.Success(Unit)
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                val ca = getCanadaClient()
+                when (val r = ca.login(username, password)) {
+                    is Result.Success -> {
+                        val t = r.data
+                        val expiresIn = t.expireInSeconds.takeIf { it > 0 }?.toInt() ?: 1799
+                        preferencesManager.saveSession(
+                            accessToken = t.accessToken,
+                            refreshToken = t.refreshToken,
+                            username = username,
+                            expiresIn = expiresIn,
+                            servicePin = servicePin
+                        )
+                        Result.Success(Unit)
+                    }
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Login failed")
+                }
             } else {
-                Result.Error(
-                    when (response.code()) {
-                        401 -> "Invalid username or password"
-                        403 -> "Account locked. Please use the Bluelink app to unlock."
-                        429 -> "Too many attempts. Please wait before trying again."
-                        else -> "Login failed (${response.code()})"
-                    },
-                    response.code()
+                val response = getApiService().getToken(
+                    LoginRequest(username = username, password = password)
                 )
+                if (response.isSuccessful) {
+                    val token = response.body() ?: return Result.Error("Empty response")
+                    preferencesManager.saveSession(
+                        accessToken = token.accessToken,
+                        refreshToken = token.refreshToken,
+                        username = username,
+                        expiresIn = token.expiresIn.toIntOrNull() ?: 1799,
+                        servicePin = servicePin
+                    )
+                    Result.Success(Unit)
+                } else {
+                    Result.Error(
+                        when (response.code()) {
+                            401 -> "Invalid username or password"
+                            403 -> "Account locked. Please use the Bluelink app to unlock."
+                            429 -> "Too many attempts. Please wait before trying again."
+                            else -> "Login failed (${response.code()})"
+                        },
+                        response.code()
+                    )
+                }
             }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error. Check your connection.")
@@ -181,26 +249,42 @@ class VehicleRepository @Inject constructor(
 
     suspend fun logout(requirePassword: Boolean = true) {
         preferencesManager.clearSession(requirePassword = requirePassword)
-        apiClient = null
+        cachedSpaKey = null
+        cachedCanadaKey = null
     }
 
     // ─── Vehicles ──────────────────────────────────────────────────────────────
 
     suspend fun getVehicles(): Result<List<Vehicle>> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val response = getApiService().getVehicles(
-                accessToken = token,
-                username = username
-            )
-            if (response.isSuccessful) {
-                val vehicles = response.body()?.vehicles?.map { detail ->
-                    detail.vehicle.copy(packageDetails = detail.packageDetails)
-                } ?: emptyList()
-                Result.Success(vehicles)
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val ca = getCanadaClient()
+                when (val r = ca.vehicleList(token)) {
+                    is Result.Success -> {
+                        val vehicles = r.data.vehicles.map { it.toVehicle(region) }
+                        Result.Success(vehicles)
+                    }
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Failed to fetch vehicles")
+                }
             } else {
-                Result.Error("Failed to fetch vehicles (${response.code()})")
+                val token = getToken()
+                val username = getUsername()
+                val response = getApiService().getVehicles(
+                    accessToken = token,
+                    username = username
+                )
+                if (response.isSuccessful) {
+                    val vehicles = response.body()?.vehicles?.map { detail ->
+                        detail.vehicle.copy(packageDetails = detail.packageDetails)
+                    } ?: emptyList()
+                    Result.Success(vehicles)
+                } else {
+                    Result.Error("Failed to fetch vehicles (${response.code()})")
+                }
             }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
@@ -217,28 +301,50 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<VehicleStatusData> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val api = getApiService()
-
-            val response = api.getVehicleStatus(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                refresh = forceRefresh.toString(),
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator
-            )
-
-            if (response.isSuccessful) {
-                val data = response.body()?.vehicleStatus
-                    ?: return Result.Error("Could not parse vehicle status")
-                preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
-                Result.Success(data)
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin(required = false)
+                if (pin.isBlank()) {
+                    return Result.Error("Bluelink PIN is required for status in Canada. Add it in Settings > Account.")
+                }
+                val ca = getCanadaClient()
+                when (val r = ca.status(token, vehicleId, pin, forceRefresh)) {
+                    is Result.Success -> {
+                        val data = CanadaStatusMapper.mapStatusFromResult(r.data)
+                            ?: return Result.Error("Could not parse vehicle status")
+                        preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
+                        Result.Success(data)
+                    }
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Status fetch failed")
+                }
             } else {
-                Result.Error("Status fetch failed (${response.code()})")
+                val token = getToken()
+                val username = getUsername()
+                val api = getApiService()
+
+                val response = api.getVehicleStatus(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    refresh = forceRefresh.toString(),
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator
+                )
+
+                if (response.isSuccessful) {
+                    val data = response.body()?.vehicleStatus
+                        ?: return Result.Error("Could not parse vehicle status")
+                    preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
+                    Result.Success(data)
+                } else {
+                    Result.Error("Status fetch failed (${response.code()})")
+                }
             }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
@@ -253,24 +359,42 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<VehicleLocation> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val response = getApiService().getVehicleLocation(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator
-            )
-
-            if (response.isSuccessful) {
-                val location = response.body()
-                    ?: return Result.Error("Could not parse vehicle location")
-                Result.Success(location)
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.locate(token, vehicleId, pin)) {
+                    is Result.Success -> {
+                        val location = CanadaStatusMapper.mapLocation(r.data)
+                            ?: return Result.Error("Could not parse vehicle location")
+                        Result.Success(location)
+                    }
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Location fetch failed")
+                }
             } else {
-                Result.Error("Location fetch failed (${response.code()})")
+                val token = getToken()
+                val username = getUsername()
+                val response = getApiService().getVehicleLocation(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator
+                )
+
+                if (response.isSuccessful) {
+                    val location = response.body()
+                        ?: return Result.Error("Could not parse vehicle location")
+                    Result.Success(location)
+                } else {
+                    Result.Error("Location fetch failed (${response.code()})")
+                }
             }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
@@ -286,22 +410,36 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin(required = false)
-            val response = getApiService().lockDoors(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                formUserName = username,
-                formVin = vin
-            )
-            validateRawCommandResponse(response, "Lock")
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin(required = false)
+                val ca = getCanadaClient()
+                when (val r = ca.lock(token, vehicleId, pin)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Lock failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin(required = false)
+                val response = getApiService().lockDoors(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    formUserName = username,
+                    formVin = vin
+                )
+                validateRawCommandResponse(response, "Lock")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -314,22 +452,36 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
-            val response = getApiService().unlockDoors(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                formUserName = username,
-                formVin = vin
-            )
-            validateRawCommandResponse(response, "Unlock")
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.unlock(token, vehicleId, pin)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Unlock failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
+                val response = getApiService().unlockDoors(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    formUserName = username,
+                    formVin = vin
+                )
+                validateRawCommandResponse(response, "Unlock")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -354,50 +506,80 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
-            val request = RemoteStartRequest(
-                airCtrl = if (hvacOn) 1 else 0,
-                airTemp = AirTempRequest(value = tempF, unit = 1),
-                defrost = defrost,
-                heating1 = if (heatedSteering) 1 else 0,
-                igniOnDuration = durationMinutes,
-                seatHeaterVentInfo = SeatInfo(
-                    driverSeatHeatCool = driverSeatHeat,
-                    passengerSeatHeatCool = passengerSeatHeat,
-                    rearLeftSeatHeatCool = rearLeftSeatHeat,
-                    rearRightSeatHeatCool = rearRightSeatHeat
-                ),
-                username = username,
-                vin = vin
-            )
-            val response = if (isEv) {
-                getApiService().startEvClimate(
-                    accessToken = token,
-                    username = username,
-                    vin = vin,
-                    appCloudVin = vin,
-                    servicePin = pin,
-                    registrationId = registrationId,
-                    gen = generation,
-                    brandIndicator = brandIndicator,
-                    request = request
-                )
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val tempUnit = preferencesManager.temperatureUnit.first()
+                val degC = when (tempUnit) {
+                    "C" -> tempF.toDoubleOrNull() ?: 22.0
+                    else -> CanadaClimateCodes.fahrenheitToCelsius(tempF.toDoubleOrNull() ?: 72.0)
+                }
+                val tempCode = CanadaClimateCodes.celsiusToTempCode(degC)
+                val hvac = com.google.gson.JsonObject().apply {
+                    addProperty("airCtrl", if (hvacOn || defrost) 1 else 0)
+                    addProperty("defrost", defrost)
+                    addProperty("heating1", if (heatedSteering) 1 else 0)
+                    add("airTemp", com.google.gson.JsonObject().apply {
+                        addProperty("value", tempCode)
+                        addProperty("unit", 0)
+                        addProperty("hvacTempType", 1)
+                    })
+                }
+                val ca = getCanadaClient()
+                when (val r = ca.remoteStart(token, vehicleId, pin, hvac)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Start failed")
+                }
             } else {
-                getApiService().startEngine(
-                    accessToken = token,
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
+                val request = RemoteStartRequest(
+                    airCtrl = if (hvacOn) 1 else 0,
+                    airTemp = AirTempRequest(value = tempF, unit = 1),
+                    defrost = defrost,
+                    heating1 = if (heatedSteering) 1 else 0,
+                    igniOnDuration = durationMinutes,
+                    seatHeaterVentInfo = SeatInfo(
+                        driverSeatHeatCool = driverSeatHeat,
+                        passengerSeatHeatCool = passengerSeatHeat,
+                        rearLeftSeatHeatCool = rearLeftSeatHeat,
+                        rearRightSeatHeatCool = rearRightSeatHeat
+                    ),
                     username = username,
-                    vin = vin,
-                    appCloudVin = vin,
-                    servicePin = pin,
-                    registrationId = registrationId,
-                    gen = generation,
-                    brandIndicator = brandIndicator,
-                    request = request
+                    vin = vin
                 )
+                val response = if (isEv) {
+                    getApiService().startEvClimate(
+                        accessToken = token,
+                        username = username,
+                        vin = vin,
+                        appCloudVin = vin,
+                        servicePin = pin,
+                        registrationId = registrationId,
+                        gen = generation,
+                        brandIndicator = brandIndicator,
+                        request = request
+                    )
+                } else {
+                    getApiService().startEngine(
+                        accessToken = token,
+                        username = username,
+                        vin = vin,
+                        appCloudVin = vin,
+                        servicePin = pin,
+                        registrationId = registrationId,
+                        gen = generation,
+                        brandIndicator = brandIndicator,
+                        request = request
+                    )
+                }
+                validateRawCommandResponse(response, "Start")
             }
-            validateRawCommandResponse(response, "Start")
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -410,20 +592,34 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
-            val response = getApiService().stopEngine(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator
-            )
-            validateRawCommandResponse(response, "Stop")
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.remoteStop(token, vehicleId, pin)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Stop failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
+                val response = getApiService().stopEngine(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator
+                )
+                validateRawCommandResponse(response, "Stop")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -437,20 +633,34 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
-            val response = getApiService().stopEvClimate(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator
-            )
-            validateRawCommandResponse(response, "Stop Climate")
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.remoteStop(token, vehicleId, pin)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Stop Climate failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
+                val response = getApiService().stopEvClimate(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator
+                )
+                validateRawCommandResponse(response, "Stop Climate")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -527,22 +737,36 @@ class VehicleRepository @Inject constructor(
         vehicleId: String = ""
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vid = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.startCharge(token, vid, pin)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Charge start failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
 
-            val response = getApiService().startCharging(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                request = EVChargeRequest(userName = username, vin = vin, action = "start")
-            )
-            validateEmptyCommandResponse(response, "Charge start")
+                val response = getApiService().startCharging(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    request = EVChargeRequest(userName = username, vin = vin, action = "start")
+                )
+                validateEmptyCommandResponse(response, "Charge start")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -556,22 +780,36 @@ class VehicleRepository @Inject constructor(
         vehicleId: String = ""
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vid = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.stopCharge(token, vid, pin)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Charge stop failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
 
-            val response = getApiService().stopCharging(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                request = EVChargeRequest(userName = username, vin = vin, action = "stop")
-            )
-            validateEmptyCommandResponse(response, "Charge stop")
+                val response = getApiService().stopCharging(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    request = EVChargeRequest(userName = username, vin = vin, action = "stop")
+                )
+                validateEmptyCommandResponse(response, "Charge stop")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -592,33 +830,44 @@ class VehicleRepository @Inject constructor(
         }
 
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vid = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.setChargeTargets(token, vid, pin, fast = dcTarget, slow = acTarget)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Set charge targets failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
 
-            // Bluelinky maps EV charge target modes as FAST = 0 and SLOW = 1.
-            // On the observed US IONIQ 9 status payload, plugType 0 corresponds to DC
-            // and plugType 1 corresponds to AC.
-            val request = SpaChargeTargetRequest(
-                targets = listOf(
-                    ChargeTarget(plugType = 0, targetSoc = dcTarget),
-                    ChargeTarget(plugType = 1, targetSoc = acTarget)
+                val request = SpaChargeTargetRequest(
+                    targets = listOf(
+                        ChargeTarget(plugType = 0, targetSoc = dcTarget),
+                        ChargeTarget(plugType = 1, targetSoc = acTarget)
+                    )
                 )
-            )
 
-            val response = getApiService().setSpaChargeTargets(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                request = request
-            )
+                val response = getApiService().setSpaChargeTargets(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    request = request
+                )
 
-            validateCommandResponse(response, "Set charge targets")
+                validateCommandResponse(response, "Set charge targets")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -634,22 +883,36 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
-            val response = getApiService().hornAndLights(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                formUserName = username,
-                formVin = vin
-            )
-            validateCommandResponse(response, "Horn/lights")
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.hornLight(token, vehicleId, pin, withHorn = true)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Horn/lights failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
+                val response = getApiService().hornAndLights(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    formUserName = username,
+                    formVin = vin
+                )
+                validateCommandResponse(response, "Horn/lights")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }
@@ -662,22 +925,36 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H"
     ): Result<Unit> {
         return try {
-            val token = getToken()
-            val username = getUsername()
-            val pin = getServicePin()
-            val response = getApiService().flashLightsOnly(
-                accessToken = token,
-                username = username,
-                vin = vin,
-                appCloudVin = vin,
-                servicePin = pin,
-                registrationId = registrationId,
-                gen = generation,
-                brandIndicator = brandIndicator,
-                formUserName = username,
-                formVin = vin
-            )
-            validateCommandResponse(response, "Flash lights")
+            val region = currentRegion()
+            if (region.usesCanadianTods()) {
+                ensureCanadaSessionFresh()
+                val token = getToken()
+                val vehicleId = registrationId.ifBlank { vin }
+                val pin = getServicePin()
+                val ca = getCanadaClient()
+                when (val r = ca.hornLight(token, vehicleId, pin, withHorn = false)) {
+                    is Result.Success -> Result.Success(Unit)
+                    is Result.Error -> Result.Error(r.message, r.code)
+                    else -> Result.Error("Flash lights failed")
+                }
+            } else {
+                val token = getToken()
+                val username = getUsername()
+                val pin = getServicePin()
+                val response = getApiService().flashLightsOnly(
+                    accessToken = token,
+                    username = username,
+                    vin = vin,
+                    appCloudVin = vin,
+                    servicePin = pin,
+                    registrationId = registrationId,
+                    gen = generation,
+                    brandIndicator = brandIndicator,
+                    formUserName = username,
+                    formVin = vin
+                )
+                validateCommandResponse(response, "Flash lights")
+            }
         } catch (e: Exception) {
             Result.Error(e.message ?: "Network error")
         }

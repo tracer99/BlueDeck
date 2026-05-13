@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.bluebridge.android.data.models.UiColorSlot
 import com.bluebridge.android.data.repository.PreferencesManager
 import com.bluebridge.android.data.repository.SecureCredentialsManager
+import com.bluebridge.android.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -14,18 +16,21 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
-    private val secureCredentialsManager: SecureCredentialsManager
+    private val secureCredentialsManager: SecureCredentialsManager,
+    private val vehicleRepository: VehicleRepository
 ) : ViewModel() {
 
     val region = preferencesManager.region
         .stateIn(viewModelScope, SharingStarted.Eagerly, "US_HYUNDAI")
+
+    val regionSetupCompleted = preferencesManager.regionSetupCompleted
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val temperatureUnit = preferencesManager.temperatureUnit
         .stateIn(viewModelScope, SharingStarted.Eagerly, "F")
 
     val biometricEnabled = preferencesManager.biometricEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
 
     val appTheme = preferencesManager.appTheme
         .stateIn(viewModelScope, SharingStarted.Eagerly, "hyundai_night")
@@ -41,7 +46,26 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setRegion(region: String) = viewModelScope.launch {
+        val prev = preferencesManager.region.first()
+        if (prev != region) {
+            val loggedIn = preferencesManager.isLoggedIn.first()
+            if (loggedIn) {
+                vehicleRepository.logout(requirePassword = true)
+            }
+        }
         preferencesManager.setRegion(region)
+    }
+
+    fun setRegionFromOnboarding(region: String) = viewModelScope.launch {
+        val prev = preferencesManager.region.first()
+        if (prev != region) {
+            val loggedIn = preferencesManager.isLoggedIn.first()
+            if (loggedIn) {
+                vehicleRepository.logout(requirePassword = true)
+            }
+        }
+        preferencesManager.setRegion(region)
+        preferencesManager.setRegionSetupCompleted(true)
     }
 
     fun setTemperatureUnit(unit: String) = viewModelScope.launch {
@@ -52,7 +76,6 @@ class SettingsViewModel @Inject constructor(
         preferencesManager.setBiometricEnabled(enabled)
         if (!enabled) secureCredentialsManager.clearSavedCredentials()
     }
-
 
     fun setAppTheme(themeId: String) = viewModelScope.launch {
         preferencesManager.setAppTheme(themeId)

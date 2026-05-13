@@ -27,6 +27,7 @@ import com.bluebridge.android.ui.screens.DriverProfilesScreen
 import com.bluebridge.android.ui.screens.EVChargingScreen
 import com.bluebridge.android.ui.screens.LocationScreen
 import com.bluebridge.android.ui.screens.LoginScreen
+import com.bluebridge.android.ui.screens.RegionOnboardingScreen
 import com.bluebridge.android.ui.screens.RemoteStartScreen
 import com.bluebridge.android.ui.screens.SeatClimatePresetsScreen
 import com.bluebridge.android.ui.screens.SettingsScreen
@@ -57,6 +58,7 @@ class MainActivity : FragmentActivity() {
             val appTheme by settingsViewModel.appTheme.collectAsStateWithLifecycle()
             val uiColorOverrides by settingsViewModel.uiColorOverrides.collectAsStateWithLifecycle()
             val biometricEnabled by settingsViewModel.biometricEnabled.collectAsStateWithLifecycle()
+            val regionSetupCompleted by settingsViewModel.regionSetupCompleted.collectAsStateWithLifecycle()
 
             var biometricUnlocked by remember { mutableStateOf(false) }
             var biometricReauthInProgress by remember { mutableStateOf(false) }
@@ -70,7 +72,8 @@ class MainActivity : FragmentActivity() {
                 biometricUnlocked,
                 biometricSessionRecoveryAvailable,
                 biometricReauthInProgress,
-                loginUiState.isLoading
+                loginUiState.isLoading,
+                regionSetupCompleted
             ) {
                 when (isLoggedIn) {
                     true -> {
@@ -89,6 +92,10 @@ class MainActivity : FragmentActivity() {
                     false -> {
                         if (biometricSessionRecoveryAvailable || biometricReauthInProgress) {
                             navController.navigate("biometric_unlock") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        } else if (!regionSetupCompleted) {
+                            navController.navigate("region_onboarding") {
                                 popUpTo(0) { inclusive = true }
                             }
                         } else {
@@ -113,9 +120,14 @@ class MainActivity : FragmentActivity() {
                                 isLoggedIn == true && biometricEnabled && !biometricUnlocked -> "biometric_unlock"
                                 isLoggedIn == true -> "dashboard"
                                 biometricSessionRecoveryAvailable -> "biometric_unlock"
+                                !regionSetupCompleted -> "region_onboarding"
                                 else -> "login"
                             }
                         ) {
+                            composable("region_onboarding") {
+                                RegionOnboardingScreen()
+                            }
+
                             composable("login") {
                                 LoginScreen(
                                     authViewModel = authViewModel,

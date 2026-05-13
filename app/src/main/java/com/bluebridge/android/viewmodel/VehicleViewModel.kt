@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bluebridge.android.data.models.*
+import com.bluebridge.android.data.api.Region
+import com.bluebridge.android.data.api.usesCanadianTods
 import com.bluebridge.android.data.repository.PreferencesManager
 import com.bluebridge.android.data.repository.Result
 import com.bluebridge.android.data.repository.VehicleRepository
@@ -75,6 +77,15 @@ class VehicleViewModel @Inject constructor(
 
     val commandHistory = preferencesManager.commandHistory
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val accountRegion = preferencesManager.region
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "US_HYUNDAI")
+
+    private suspend fun apiRegistration(vehicle: Vehicle): String {
+        val r = runCatching { Region.valueOf(preferencesManager.region.first()) }
+            .getOrDefault(Region.US_HYUNDAI)
+        return if (r.usesCanadianTods()) vehicle.vehicleIdentifier.ifBlank { vehicle.regId } else vehicle.regId
+    }
 
     // ─── Remote start settings ─────────────────────────────────────────────────
     private val _remoteStartSettings = MutableStateFlow(RemoteStartSettings())
@@ -171,7 +182,7 @@ class VehicleViewModel @Inject constructor(
             when (val result = repository.getVehicleStatus(
                 vin = vehicle.vin,
                 forceRefresh = forceFromServer,
-                registrationId = vehicle.regId,
+                registrationId = apiRegistration(vehicle),
                 generation = vehicle.generation,
                 brandIndicator = vehicle.brandIndicator
             )) {
@@ -200,7 +211,7 @@ class VehicleViewModel @Inject constructor(
             _statusError.value = null
             when (val result = repository.getVehicleLocation(
                 vin = vehicle.vin,
-                registrationId = vehicle.regId,
+                registrationId = apiRegistration(vehicle),
                 generation = vehicle.generation,
                 brandIndicator = vehicle.brandIndicator
             )) {
@@ -224,7 +235,7 @@ class VehicleViewModel @Inject constructor(
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
         repository.lockDoors(
             vin = vehicle.vin,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )
@@ -238,7 +249,7 @@ class VehicleViewModel @Inject constructor(
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
         repository.unlockDoors(
             vin = vehicle.vin,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )
@@ -265,7 +276,7 @@ class VehicleViewModel @Inject constructor(
                 rearRightSeatHeat = s.rearRightSeatHeat,
                 durationMinutes = s.durationMinutes,
                 isEv = selected.isEV,
-                registrationId = selected.regId,
+                registrationId = apiRegistration(selected),
                 generation = selected.generation,
                 brandIndicator = selected.brandIndicator
             )
@@ -283,14 +294,14 @@ class VehicleViewModel @Inject constructor(
                 repository.stopClimate(
                     vin = selected.vin,
                     isEv = true,
-                    registrationId = selected.regId,
+                    registrationId = apiRegistration(selected),
                     generation = selected.generation,
                     brandIndicator = selected.brandIndicator
                 )
             } else {
                 repository.stopEngine(
                     vin = selected.vin,
-                    registrationId = selected.regId,
+                    registrationId = apiRegistration(selected),
                     generation = selected.generation,
                     brandIndicator = selected.brandIndicator
                 )
@@ -322,7 +333,7 @@ class VehicleViewModel @Inject constructor(
             rearLeftSeatHeat = rearLeftSeat,
             rearRightSeatHeat = rearRightSeat,
             isEv = vehicle.isEV,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )
@@ -337,7 +348,7 @@ class VehicleViewModel @Inject constructor(
         repository.stopClimate(
             vin = vehicle.vin,
             isEv = vehicle.isEV,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )
@@ -352,7 +363,7 @@ class VehicleViewModel @Inject constructor(
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
         repository.startCharging(
             vin = vehicle.vin,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator,
             vehicleId = vehicle.enrollmentId.ifBlank { vehicle.vehicleIdentifier.ifBlank { vehicle.regId } }
@@ -367,7 +378,7 @@ class VehicleViewModel @Inject constructor(
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
         repository.stopCharging(
             vin = vehicle.vin,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator,
             vehicleId = vehicle.enrollmentId.ifBlank { vehicle.vehicleIdentifier.ifBlank { vehicle.regId } }
@@ -385,7 +396,7 @@ class VehicleViewModel @Inject constructor(
             vin = vehicle.vin,
             acTarget = acTarget,
             dcTarget = dcTarget,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )
@@ -400,7 +411,7 @@ class VehicleViewModel @Inject constructor(
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
         repository.hornAndLights(
             vin = vehicle.vin,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )
@@ -414,7 +425,7 @@ class VehicleViewModel @Inject constructor(
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
         repository.flashLights(
             vin = vehicle.vin,
-            registrationId = vehicle.regId,
+            registrationId = apiRegistration(vehicle),
             generation = vehicle.generation,
             brandIndicator = vehicle.brandIndicator
         )

@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.telematics.hyundaiusa.com</domain>
         <domain includeSubdomains="true">api.hyundaiusa.com</domain>
         <domain includeSubdomains="true">api.hyundaicanada.com</domain>
+        <domain includeSubdomains="true">mybluelink.ca</domain>
         <domain includeSubdomains="true">kiaconnect.com</domain>
+        <domain includeSubdomains="true">kiaconnect.ca</domain>
+        <domain includeSubdomains="true">api.owners.kia.com</domain>
         <domain includeSubdomains="true">prd.eu-ccapi.hyundai.com</domain>
         <domain includeSubdomains="true">prd.aus-ccapi.hyundai.com</domain>
     </domain-config>
