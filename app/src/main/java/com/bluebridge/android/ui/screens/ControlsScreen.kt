@@ -103,12 +103,21 @@ fun ControlsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = {
-                            pendingConfirmation = ControlsConfirmationRequest(
-                                title = if (isEV) "Start climate?" else "Remote start?",
-                                message = if (isEV) "Start cabin climate preconditioning?" else "Remote start ${vehicle?.displayName ?: "this vehicle"}?",
-                                confirmLabel = if (isEV) "Start Climate" else "Start",
-                                action = { vehicleViewModel.startEngine() }
-                            )
+                            if (status?.doorsLocked == false) {
+                                pendingConfirmation = ControlsConfirmationRequest(
+                                    title = "Lock vehicle first?",
+                                    message = "Climate/remote start requires the doors to be locked. Lock ${vehicle?.displayName ?: "this vehicle"} first, then start automatically.",
+                                    confirmLabel = "Lock & Start",
+                                    action = { vehicleViewModel.lockThenStartEngine() }
+                                )
+                            } else {
+                                pendingConfirmation = ControlsConfirmationRequest(
+                                    title = if (isEV) "Start climate?" else "Remote start?",
+                                    message = if (isEV) "Start cabin climate preconditioning?" else "Remote start ${vehicle?.displayName ?: "this vehicle"}?",
+                                    confirmLabel = if (isEV) "Start Climate" else "Start",
+                                    action = { vehicleViewModel.startEngine() }
+                                )
+                            }
                         },
                         enabled = !engineOn,
                         modifier = Modifier.fillMaxWidth(),
@@ -140,8 +149,17 @@ fun ControlsScreen(
 
             // ─── Climate ───────────────────────────────────────────────────────
             ControlSection(title = if (isEV) "EV Climate Preconditioning" else "Climate Settings") {
+                val statusDisplayTemp = status?.airTemp?.let { apiTemperatureToPreferredValue(it.value, it.unit, temperatureUnit) }
+                val climateOn = status?.airCtrlOn == true
                 var defrost by remember { mutableStateOf(false) }
-                var displayTemp by remember(temperatureUnit) { mutableFloatStateOf(climateDisplayValueFromF("72", temperatureUnit).toFloat()) }
+                var heatedSteering by remember { mutableStateOf(false) }
+                var displayTemp by remember(temperatureUnit) { mutableFloatStateOf((statusDisplayTemp ?: climateDisplayValueFromF("72", temperatureUnit)).toFloat()) }
+
+                LaunchedEffect(climateOn, statusDisplayTemp, temperatureUnit) {
+                    if (climateOn && statusDisplayTemp != null) {
+                        displayTemp = statusDisplayTemp.toFloat()
+                    }
+                }
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -172,6 +190,13 @@ fun ControlsScreen(
                         onChecked = { defrost = it }
                     )
 
+                    ToggleControlRow(
+                        label = "Heated Steering Wheel",
+                        icon = Icons.Filled.Straight,
+                        checked = heatedSteering,
+                        onChecked = { heatedSteering = it }
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -181,16 +206,37 @@ fun ControlsScreen(
                                 val selectedDisplayTemp = displayTemp.toInt()
                                 val selectedTempF = climateFahrenheitFromDisplay(selectedDisplayTemp, temperatureUnit)
                                 val selectedDefrost = defrost
-                                pendingConfirmation = ControlsConfirmationRequest(
-                                    title = "Start climate?",
-                                    message = buildString {
-                                        append("Start cabin climate at ${selectedDisplayTemp}°${temperatureUnit}")
-                                        if (selectedDefrost) append(" with defrost")
-                                        append("?")
-                                    },
-                                    confirmLabel = "Start Climate",
-                                    action = { vehicleViewModel.startClimate(selectedTempF.toString(), selectedDefrost) }
-                                )
+                                val selectedHeatedSteering = heatedSteering
+                                if (status?.doorsLocked == false) {
+                                    pendingConfirmation = ControlsConfirmationRequest(
+                                        title = "Lock vehicle first?",
+                                        message = "Climate start requires the doors to be locked. Lock ${vehicle?.displayName ?: "this vehicle"} first, then start climate automatically.",
+                                        confirmLabel = "Lock & Start Climate",
+                                        action = { vehicleViewModel.lockThenStartClimate(
+                                            tempF = selectedTempF.toString(),
+                                            defrost = selectedDefrost,
+                                            heatedSteering = selectedHeatedSteering
+                                        ) }
+                                    )
+                                } else {
+                                    pendingConfirmation = ControlsConfirmationRequest(
+                                        title = "Start climate?",
+                                        message = buildString {
+                                            append("Start cabin climate at ${selectedDisplayTemp}°${temperatureUnit}")
+                                            if (selectedDefrost) append(" with defrost")
+                                            if (selectedHeatedSteering) append(" and heated steering wheel")
+                                            append("?")
+                                        },
+                                        confirmLabel = "Start Climate",
+                                        action = {
+                                            vehicleViewModel.startClimate(
+                                                tempF = selectedTempF.toString(),
+                                                defrost = selectedDefrost,
+                                                heatedSteering = selectedHeatedSteering
+                                            )
+                                        }
+                                    )
+                                }
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))

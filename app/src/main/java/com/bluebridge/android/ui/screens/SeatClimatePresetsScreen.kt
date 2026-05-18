@@ -237,6 +237,7 @@ private fun PresetSeatTile(
     modifier: Modifier = Modifier
 ) {
     val accent = presetSeatColor(value)
+    val tileAccent = MaterialTheme.colorScheme.primary
     val icon = when (value) {
         6, 7, 8 -> Icons.Filled.Whatshot
         3, 4, 5 -> Icons.Filled.AcUnit
@@ -249,9 +250,9 @@ private fun PresetSeatTile(
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        color = accent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.18f),
+        color = tileAccent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.14f),
         contentColor = accent,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.55f))
+        border = BorderStroke(1.dp, tileAccent.copy(alpha = 0.55f))
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),

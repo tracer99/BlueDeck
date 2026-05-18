@@ -168,19 +168,21 @@ fun StatusScreen(
 
 
                 // ─── Seat Comfort ─────────────────────────────────────────────
-                if (s.seatHeaterVentInfo != null || vehicle?.seatConfigurations?.seatConfigs?.isNotEmpty() == true) {
-                    ControlSection(title = "Seat Comfort") {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            s.seatHeaterVentInfo?.let { seats ->
-                                StatusRow(Icons.Filled.Info, "Driver Seat", seatLevelLabel(seats.driverSeatHeatState), seatLevelColor(seats.driverSeatHeatState))
-                                StatusRow(Icons.Filled.Info, "Passenger Seat", seatLevelLabel(seats.passengerSeatHeatState), seatLevelColor(seats.passengerSeatHeatState))
-                                StatusRow(Icons.Filled.Info, "Rear Left Seat", seatLevelLabel(seats.rearLeftSeatHeatState), seatLevelColor(seats.rearLeftSeatHeatState))
-                                StatusRow(Icons.Filled.Info, "Rear Right Seat", seatLevelLabel(seats.rearRightSeatHeatState), seatLevelColor(seats.rearRightSeatHeatState))
-                            }
-                            vehicle?.seatConfigurations?.seatConfigs?.takeIf { it.isNotEmpty() }?.let { seatConfigs ->
-                                SeatCapabilityMap(seatConfigs = seatConfigs)
-                            }
+                ControlSection(title = "Seat Comfort") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val seats = s.seatHeaterVentInfo
+                        if (seats != null) {
+                            StatusRow(Icons.Filled.Info, "Driver Seat", seatLevelLabel(seats.driverSeatHeatState), seatLevelColor(seats.driverSeatHeatState))
+                            StatusRow(Icons.Filled.Info, "Passenger Seat", seatLevelLabel(seats.passengerSeatHeatState), seatLevelColor(seats.passengerSeatHeatState))
+                            StatusRow(Icons.Filled.Info, "Rear Left Seat", seatLevelLabel(seats.rearLeftSeatHeatState), seatLevelColor(seats.rearLeftSeatHeatState))
+                            StatusRow(Icons.Filled.Info, "Rear Right Seat", seatLevelLabel(seats.rearRightSeatHeatState), seatLevelColor(seats.rearRightSeatHeatState))
+                        } else {
+                            StackedStatusRow(
+                                label = "Current seat state",
+                                value = "Not reported by this vehicle/status response"
+                            )
                         }
+                        SeatCapabilityMap(seatConfigs = vehicle?.seatConfigurations?.seatConfigs.orEmpty())
                     }
                 }
 
@@ -554,7 +556,6 @@ private fun formatScheduleTime(time: com.bluebridge.android.data.models.Schedule
 
 @Composable
 private fun SeatCapabilityMap(seatConfigs: List<SeatConfig>) {
-    val byId = seatConfigs.associateBy { it.seatLocationId }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -568,7 +569,7 @@ private fun SeatCapabilityMap(seatConfigs: List<SeatConfig>) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Vehicle-reported",
+                "Reported if available",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f)
             )
@@ -588,12 +589,12 @@ private fun SeatCapabilityMap(seatConfigs: List<SeatConfig>) {
             ) {
                 SeatCapabilityTile(
                     label = "Driver",
-                    seatConfig = byId["1"],
+                    seatConfig = seatConfigs.seatConfigFor("1", "D", "DRIVER", "FRONT_LEFT", "FRONTLEFT", "FL"),
                     modifier = Modifier.weight(1f)
                 )
                 SeatCapabilityTile(
                     label = "Passenger",
-                    seatConfig = byId["2"],
+                    seatConfig = seatConfigs.seatConfigFor("2", "P", "PASSENGER", "FRONT_RIGHT", "FRONTRIGHT", "FR", "ASSISTANT"),
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -603,12 +604,12 @@ private fun SeatCapabilityMap(seatConfigs: List<SeatConfig>) {
             ) {
                 SeatCapabilityTile(
                     label = "Rear Left",
-                    seatConfig = byId["3"],
+                    seatConfig = seatConfigs.seatConfigFor("3", "RL", "REAR_LEFT", "REARLEFT", "BACK_LEFT", "BACKLEFT", "LEFT_REAR", "LEFTREAR"),
                     modifier = Modifier.weight(1f)
                 )
                 SeatCapabilityTile(
                     label = "Rear Right",
-                    seatConfig = byId["4"],
+                    seatConfig = seatConfigs.seatConfigFor("4", "RR", "REAR_RIGHT", "REARRIGHT", "BACK_RIGHT", "BACKRIGHT", "RIGHT_REAR", "RIGHTREAR"),
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -616,31 +617,33 @@ private fun SeatCapabilityMap(seatConfigs: List<SeatConfig>) {
     }
 }
 
+
+private fun List<SeatConfig>.seatConfigFor(vararg ids: String): SeatConfig? {
+    val normalized = ids.map { it.normalizeSeatId() }.toSet()
+    return firstOrNull { it.seatLocationId.normalizeSeatId() in normalized }
+}
+
+private fun String.normalizeSeatId(): String = trim()
+    .uppercase()
+    .replace('-', '_')
+    .replace(' ', '_')
+
 @Composable
 private fun SeatCapabilityTile(
     label: String,
     seatConfig: SeatConfig?,
     modifier: Modifier = Modifier
 ) {
-    val heatSupported = seatConfig?.heatingCapable.isSupportedFlag()
-    val ventSupported = seatConfig?.ventCapable.isSupportedFlag()
-    val anySupported = heatSupported || ventSupported
-    val borderColor = when {
-        heatSupported && ventSupported -> SeatVentBlue.copy(alpha = 0.62f)
-        heatSupported -> SeatHeatOrange.copy(alpha = 0.70f)
-        ventSupported -> SeatVentBlue.copy(alpha = 0.70f)
-        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
-    }
+    val heatState = seatConfig.heatSupportState()
+    val ventState = seatConfig.ventSupportState()
+    val anySupported = heatState == SeatSupportState.SUPPORTED || ventState == SeatSupportState.SUPPORTED
+    val tileAccent = MaterialTheme.colorScheme.primary
 
     Surface(
-        modifier = modifier.height(92.dp),
+        modifier = modifier.height(98.dp),
         shape = RoundedCornerShape(18.dp),
-        color = if (anySupported) {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-        } else {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.035f)
-        },
-        border = BorderStroke(1.dp, borderColor)
+        color = tileAccent.copy(alpha = if (anySupported) 0.08f else 0.045f),
+        border = BorderStroke(1.dp, tileAccent.copy(alpha = 0.55f))
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -650,7 +653,7 @@ private fun SeatCapabilityTile(
             Icon(
                 imageVector = Icons.Filled.AirlineSeatReclineNormal,
                 contentDescription = null,
-                tint = if (anySupported) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.36f),
+                tint = tileAccent.copy(alpha = if (anySupported) 0.90f else 0.48f),
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.height(4.dp))
@@ -665,14 +668,18 @@ private fun SeatCapabilityTile(
             Spacer(Modifier.height(5.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CapabilityPill(
-                    label = "Heat",
-                    supported = heatSupported,
+                    supportedLabel = "Heat",
+                    unsupportedLabel = "No heat",
+                    unknownLabel = "Heat ?",
+                    state = heatState,
                     supportedColor = SeatHeatOrange,
                     icon = Icons.Filled.Whatshot
                 )
                 CapabilityPill(
-                    label = "Vent",
-                    supported = ventSupported,
+                    supportedLabel = "Vent",
+                    unsupportedLabel = "No vent",
+                    unknownLabel = "Vent ?",
+                    state = ventState,
                     supportedColor = SeatVentBlue,
                     icon = Icons.Filled.AcUnit
                 )
@@ -683,16 +690,31 @@ private fun SeatCapabilityTile(
 
 @Composable
 private fun CapabilityPill(
-    label: String,
-    supported: Boolean,
+    supportedLabel: String,
+    unsupportedLabel: String,
+    unknownLabel: String,
+    state: SeatSupportState,
     supportedColor: Color,
     icon: ImageVector
 ) {
-    val tint = if (supported) supportedColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val tint = when (state) {
+        SeatSupportState.SUPPORTED -> supportedColor
+        SeatSupportState.NOT_SUPPORTED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
+        SeatSupportState.NOT_REPORTED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
+    }
+    val label = when (state) {
+        SeatSupportState.SUPPORTED -> supportedLabel
+        SeatSupportState.NOT_SUPPORTED -> unsupportedLabel
+        SeatSupportState.NOT_REPORTED -> unknownLabel
+    }
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = tint.copy(alpha = if (supported) 0.18f else 0.08f),
-        border = BorderStroke(1.dp, tint.copy(alpha = if (supported) 0.52f else 0.16f))
+        color = tint.copy(alpha = when (state) {
+            SeatSupportState.SUPPORTED -> 0.18f
+            SeatSupportState.NOT_SUPPORTED -> 0.07f
+            SeatSupportState.NOT_REPORTED -> 0.05f
+        }),
+        border = BorderStroke(1.dp, tint.copy(alpha = if (state == SeatSupportState.SUPPORTED) 0.52f else 0.16f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
@@ -732,10 +754,43 @@ private fun StackedStatusRow(label: String, value: String) {
 }
 
 
-private fun String?.isSupportedFlag(): Boolean = when (this?.trim()?.uppercase()) {
-    "Y", "YES", "TRUE", "1", "2", "SUPPORTED", "CAPABLE", "ENABLED" -> true
-    else -> false
+private enum class SeatSupportState { SUPPORTED, NOT_SUPPORTED, NOT_REPORTED }
+
+private fun SeatConfig?.heatSupportState(): SeatSupportState {
+    if (this == null) return SeatSupportState.NOT_REPORTED
+    val explicit = heatingCapable.supportFlagState()
+    if (explicit != SeatSupportState.NOT_REPORTED) return explicit
+    val levels = supportedLevelCodes()
+    return when {
+        levels.any { it in 6..8 } -> SeatSupportState.SUPPORTED
+        levels.isNotEmpty() -> SeatSupportState.NOT_SUPPORTED
+        else -> SeatSupportState.NOT_REPORTED
+    }
 }
+
+private fun SeatConfig?.ventSupportState(): SeatSupportState {
+    if (this == null) return SeatSupportState.NOT_REPORTED
+    val explicit = ventCapable.supportFlagState()
+    if (explicit != SeatSupportState.NOT_REPORTED) return explicit
+    val levels = supportedLevelCodes()
+    return when {
+        levels.any { it in 3..5 } -> SeatSupportState.SUPPORTED
+        levels.isNotEmpty() -> SeatSupportState.NOT_SUPPORTED
+        else -> SeatSupportState.NOT_REPORTED
+    }
+}
+
+private fun SeatConfig.supportedLevelCodes(): List<Int> = supportedLevels
+    .split(',', '|', ';', ' ')
+    .mapNotNull { it.trim().toIntOrNull() }
+
+private fun String?.supportFlagState(): SeatSupportState = when (this?.trim()?.uppercase()) {
+    "Y", "YES", "TRUE", "1", "2", "SUPPORTED", "CAPABLE", "ENABLED", "AVAILABLE" -> SeatSupportState.SUPPORTED
+    "N", "NO", "FALSE", "0", "NOT_SUPPORTED", "UNSUPPORTED", "NOT SUPPORTED", "DISABLED", "UNAVAILABLE" -> SeatSupportState.NOT_SUPPORTED
+    else -> SeatSupportState.NOT_REPORTED
+}
+
+private fun String?.isSupportedFlag(): Boolean = supportFlagState() == SeatSupportState.SUPPORTED
 
 private fun yesNo(raw: String): String = when (raw.trim().uppercase()) {
     "Y", "YES", "TRUE", "1" -> "Supported"

@@ -82,6 +82,7 @@ class PreferencesManager @Inject constructor(
         val EU_DEVICE_ID = stringPreferencesKey("eu_device_id")
         val EU_DEVICE_REGION = stringPreferencesKey("eu_device_region")
         val AU_DEVICE_ID = stringPreferencesKey("au_device_id")
+        val KIA_US_DEVICE_ID = stringPreferencesKey("kia_us_device_id")
         const val THIRTY_DAYS_MS = 30L * 24L * 60L * 60L * 1000L
     }
 
@@ -176,7 +177,7 @@ class PreferencesManager @Inject constructor(
 
     val walkAwayLockDelaySeconds: Flow<Int> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
-        .map { it[WALK_AWAY_LOCK_DELAY_SECONDS] ?: 60 }
+        .map { (it[WALK_AWAY_LOCK_DELAY_SECONDS] ?: 60).coerceIn(0, 600) }
 
     val walkAwayBluetoothAddress: Flow<String?> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -310,6 +311,20 @@ class PreferencesManager @Inject constructor(
         dataStore.edit { prefs -> prefs[AU_DEVICE_ID] = deviceId }
     }
 
+    suspend fun getOrCreateKiaUsDeviceId(): String {
+        val existing = dataStore.data.first()[KIA_US_DEVICE_ID]
+        if (!existing.isNullOrBlank()) return existing
+
+        val generated = UUID.randomUUID().toString().uppercase()
+        dataStore.edit { prefs -> prefs[KIA_US_DEVICE_ID] = generated }
+        return generated
+    }
+
+    suspend fun setKiaUsDeviceId(deviceId: String) {
+        if (deviceId.isBlank()) return
+        dataStore.edit { prefs -> prefs[KIA_US_DEVICE_ID] = deviceId }
+    }
+
     suspend fun saveSession(accessToken: String, refreshToken: String, username: String, expiresIn: Int, servicePin: String? = null) {
         dataStore.edit { prefs ->
             val now = System.currentTimeMillis()
@@ -408,7 +423,7 @@ class PreferencesManager @Inject constructor(
     }
 
     suspend fun setWalkAwayLockDelaySeconds(seconds: Int) {
-        dataStore.edit { prefs -> prefs[WALK_AWAY_LOCK_DELAY_SECONDS] = if (seconds == 30) 30 else 60 }
+        dataStore.edit { prefs -> prefs[WALK_AWAY_LOCK_DELAY_SECONDS] = seconds.coerceIn(0, 600) }
     }
 
     suspend fun setWalkAwayBluetoothDevice(name: String, address: String) {

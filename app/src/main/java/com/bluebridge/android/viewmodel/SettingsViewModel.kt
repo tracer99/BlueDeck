@@ -47,6 +47,9 @@ class SettingsViewModel @Inject constructor(
     val walkAwayLockEnabled = preferencesManager.walkAwayLockEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    val walkAwayLockDelaySeconds = preferencesManager.walkAwayLockDelaySeconds
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 60)
+
     val walkAwayBluetoothName = preferencesManager.walkAwayBluetoothName
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -105,6 +108,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setWalkAwayLockEnabled(enabled: Boolean) = viewModelScope.launch {
         preferencesManager.setWalkAwayLockEnabled(enabled)
+    }
+
+    fun setWalkAwayLockDelaySeconds(seconds: Int) = viewModelScope.launch {
+        preferencesManager.setWalkAwayLockDelaySeconds(seconds)
     }
 
     fun setWalkAwayBluetoothDevice(name: String, address: String) = viewModelScope.launch {

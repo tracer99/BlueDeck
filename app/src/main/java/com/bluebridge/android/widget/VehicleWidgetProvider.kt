@@ -449,6 +449,13 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             )
         }
 
+
+        private fun acceptedByBrand(vehicle: Vehicle): String = when (vehicle.brandIndicator.trim().uppercase()) {
+            "K" -> "Accepted by Kia"
+            "G" -> "Accepted by Genesis"
+            else -> "Accepted by Hyundai"
+        }
+
         private suspend fun handleWidgetAction(context: Context, action: String) {
             val preferencesManager = PreferencesManager(context.applicationContext)
             val repository = VehicleRepository(preferencesManager, SecureCredentialsManager(context.applicationContext))
@@ -485,7 +492,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
                             brandIndicator = vehicle.brandIndicator
                         )
                         if (command is Result.Success) {
-                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, "Accepted by Hyundai", true)
+                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, acceptedByBrand(vehicle), true)
                             refreshVehicleStatus(repository, preferencesManager, context, vehicle, "Lock sent from widget")
                         } else command
                     }
@@ -497,7 +504,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
                             brandIndicator = vehicle.brandIndicator
                         )
                         if (command is Result.Success) {
-                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, "Accepted by Hyundai", true)
+                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, acceptedByBrand(vehicle), true)
                             refreshVehicleStatus(repository, preferencesManager, context, vehicle, "Unlock sent from widget")
                         } else command
                     }

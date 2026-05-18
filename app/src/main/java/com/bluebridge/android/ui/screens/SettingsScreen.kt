@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluebridge.android.BuildConfig
 import com.bluebridge.android.automation.WalkAwayBluetoothMonitorService
 import com.bluebridge.android.automation.WalkAwayLockScheduler
 import com.bluebridge.android.data.api.Region
@@ -61,6 +62,7 @@ fun SettingsScreen(
     val biometricUnlockMode by viewModel.biometricUnlockMode.collectAsStateWithLifecycle()
     val stayLoggedIn30Days by viewModel.stayLoggedIn30Days.collectAsStateWithLifecycle()
     val walkAwayLockEnabled by viewModel.walkAwayLockEnabled.collectAsStateWithLifecycle()
+    val walkAwayLockDelaySeconds by viewModel.walkAwayLockDelaySeconds.collectAsStateWithLifecycle()
     val walkAwayBluetoothName by viewModel.walkAwayBluetoothName.collectAsStateWithLifecycle()
     val walkAwayBluetoothAddress by viewModel.walkAwayBluetoothAddress.collectAsStateWithLifecycle()
     val selectedThemeId by viewModel.appTheme.collectAsStateWithLifecycle()
@@ -81,6 +83,9 @@ fun SettingsScreen(
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showBluetoothPicker by remember { mutableStateOf(false) }
     var bluetoothPermissionMessage by remember { mutableStateOf<String?>(null) }
+    var walkAwayDelayInput by remember(walkAwayLockDelaySeconds) {
+        mutableStateOf(walkAwayLockDelaySeconds.coerceIn(0, 600).toString())
+    }
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val bluetoothGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             grants[Manifest.permission.BLUETOOTH_CONNECT] == true ||
@@ -509,6 +514,56 @@ fun SettingsScreen(
                         onClick = { openBluetoothPicker() }
                     )
 
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Timer,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Lock Delay Offset",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "Extra seconds to wait before locking",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        OutlinedTextField(
+                            value = walkAwayDelayInput,
+                            onValueChange = { raw ->
+                                val digits = raw.filter { it.isDigit() }.take(3)
+                                val bounded = digits.toIntOrNull()?.coerceIn(0, 600)
+                                walkAwayDelayInput = bounded?.toString() ?: digits
+                                bounded?.let { viewModel.setWalkAwayLockDelaySeconds(it) }
+                            },
+                            label = { Text("Seconds") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(128.dp)
+                        )
+                    }
+
+                    Text(
+                        "Allowed range: 0-600 seconds. The app/vehicle already has a short built-in delay; this value adds extra time on top of that.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(start = 32.dp, end = 8.dp, bottom = 4.dp)
+                    )
+
                     bluetoothPermissionMessage?.let { message ->
                         Text(
                             message,
@@ -541,7 +596,7 @@ fun SettingsScreen(
             // ── About ─────────────────────────────────────────────────────────
             ControlSection(title = "About") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    SettingsInfoRow("Version", "1.2")
+                    SettingsInfoRow("Version", BuildConfig.VERSION_NAME)
                     SettingsInfoRow("API", "Hyundai Bluelink / Kia Connect")
                     SettingsInfoRow("Credit", "Nelwyn99")
                     Spacer(Modifier.height(4.dp))

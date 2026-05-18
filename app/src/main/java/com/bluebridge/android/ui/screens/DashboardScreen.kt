@@ -241,16 +241,25 @@ fun DashboardScreen(
                             },
                             onRemoteStart = {
                                 val isEV = selectedVehicle?.isEV == true
-                                pendingConfirmation = DashboardConfirmationRequest(
-                                    title = if (isEV) "Start climate?" else "Remote start?",
-                                    message = if (isEV) {
-                                        "Start cabin climate preconditioning for ${selectedVehicle?.displayName ?: "this vehicle"}?"
-                                    } else {
-                                        "Remote start ${selectedVehicle?.displayName ?: "this vehicle"}?"
-                                    },
-                                    confirmLabel = if (isEV) "Start Climate" else "Start",
-                                    action = { vehicleViewModel.startEngine() }
-                                )
+                                if (vehicleStatus?.doorsLocked == false) {
+                                    pendingConfirmation = DashboardConfirmationRequest(
+                                        title = "Lock vehicle first?",
+                                        message = "Climate/remote start requires the doors to be locked. Lock ${selectedVehicle?.displayName ?: "this vehicle"} first, then start automatically.",
+                                        confirmLabel = "Lock & Start",
+                                        action = { vehicleViewModel.lockThenStartEngine() }
+                                    )
+                                } else {
+                                    pendingConfirmation = DashboardConfirmationRequest(
+                                        title = if (isEV) "Start climate?" else "Remote start?",
+                                        message = if (isEV) {
+                                            "Start cabin climate preconditioning for ${selectedVehicle?.displayName ?: "this vehicle"}?"
+                                        } else {
+                                            "Remote start ${selectedVehicle?.displayName ?: "this vehicle"}?"
+                                        },
+                                        confirmLabel = if (isEV) "Start Climate" else "Start",
+                                        action = { vehicleViewModel.startEngine() }
+                                    )
+                                }
                             },
                             onStopEngine = {
                                 val isEV = selectedVehicle?.isEV == true
@@ -300,36 +309,57 @@ fun DashboardScreen(
                             vehicle = selectedVehicle,
                             status = vehicleStatus,
                             temperatureUnit = temperatureUnit,
-                            onStartClimate = { tempF, defrost, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat ->
-                                pendingConfirmation = DashboardConfirmationRequest(
-                                    title = "Start climate?",
-                                    message = buildString {
-                                        append("Start cabin climate at ${climateTemperatureLabelFromF(tempF.toString(), temperatureUnit)}")
-                                        if (defrost) append(" with defrost")
-                                        val seatSummary = listOf(
-                                            "Driver" to driverSeat,
-                                            "Passenger" to passengerSeat,
-                                            "Rear L" to rearLeftSeat,
-                                            "Rear R" to rearRightSeat
-                                        ).filter { (_, value) -> value != 0 && value != 2 }
-                                        if (seatSummary.isNotEmpty()) {
-                                            append("\n\nSeats: ")
-                                            append(seatSummary.joinToString { (seat, value) -> "$seat ${dashboardSeatClimateLabel(value)}" })
+                            onStartClimate = { tempF, defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat ->
+                                if (vehicleStatus?.doorsLocked == false) {
+                                    pendingConfirmation = DashboardConfirmationRequest(
+                                        title = "Lock vehicle first?",
+                                        message = "Climate start requires the doors to be locked. Lock ${selectedVehicle?.displayName ?: "this vehicle"} first, then start climate automatically.",
+                                        confirmLabel = "Lock & Start Climate",
+                                        action = {
+                                            vehicleViewModel.lockThenStartClimate(
+                                                tempF = tempF.toString(),
+                                                defrost = defrost,
+                                                heatedSteering = heatedSteering,
+                                                driverSeat = driverSeat,
+                                                passengerSeat = passengerSeat,
+                                                rearLeftSeat = rearLeftSeat,
+                                                rearRightSeat = rearRightSeat
+                                            )
                                         }
-                                        append("?")
-                                    },
-                                    confirmLabel = "Start Climate",
-                                    action = {
-                                        vehicleViewModel.startClimate(
-                                            tempF = tempF.toString(),
-                                            defrost = defrost,
-                                            driverSeat = driverSeat,
-                                            passengerSeat = passengerSeat,
-                                            rearLeftSeat = rearLeftSeat,
-                                            rearRightSeat = rearRightSeat
-                                        )
-                                    }
-                                )
+                                    )
+                                } else {
+                                    pendingConfirmation = DashboardConfirmationRequest(
+                                        title = "Start climate?",
+                                        message = buildString {
+                                            append("Start cabin climate at ${climateTemperatureLabelFromF(tempF.toString(), temperatureUnit)}")
+                                            if (defrost) append(" with defrost")
+                                            if (heatedSteering) append(" with heated steering wheel")
+                                            val seatSummary = listOf(
+                                                "Driver" to driverSeat,
+                                                "Passenger" to passengerSeat,
+                                                "Rear L" to rearLeftSeat,
+                                                "Rear R" to rearRightSeat
+                                            ).filter { (_, value) -> value != 0 && value != 2 }
+                                            if (seatSummary.isNotEmpty()) {
+                                                append("\n\nSeats: ")
+                                                append(seatSummary.joinToString { (seat, value) -> "$seat ${dashboardSeatClimateLabel(value)}" })
+                                            }
+                                            append("?")
+                                        },
+                                        confirmLabel = "Start Climate",
+                                        action = {
+                                            vehicleViewModel.startClimate(
+                                                tempF = tempF.toString(),
+                                                defrost = defrost,
+                                                heatedSteering = heatedSteering,
+                                                driverSeat = driverSeat,
+                                                passengerSeat = passengerSeat,
+                                                rearLeftSeat = rearLeftSeat,
+                                                rearRightSeat = rearRightSeat
+                                            )
+                                        }
+                                    )
+                                }
                             },
                             onStopClimate = {
                                 pendingConfirmation = DashboardConfirmationRequest(
@@ -1648,14 +1678,16 @@ fun DashboardClimateControls(
     vehicle: Vehicle?,
     status: VehicleStatusData?,
     temperatureUnit: String,
-    onStartClimate: (Int, Boolean, Int, Int, Int, Int) -> Unit,
+    onStartClimate: (Int, Boolean, Boolean, Int, Int, Int, Int) -> Unit,
     onStopClimate: () -> Unit,
     onManageSeatPresets: () -> Unit
 ) {
     val isEV = vehicle?.isEV == true
     val climateOn = status?.airCtrlOn == true
+    val statusDisplayTemp = status?.airTemp?.let { apiTemperatureToPreferredValue(it.value, it.unit, temperatureUnit) }
     var defrost by remember { mutableStateOf(false) }
-    var displayTemp by remember(temperatureUnit) { mutableFloatStateOf(climateDisplayValueFromF("72", temperatureUnit).toFloat()) }
+    var heatedSteering by remember { mutableStateOf(false) }
+    var displayTemp by remember(temperatureUnit) { mutableFloatStateOf((statusDisplayTemp ?: climateDisplayValueFromF("72", temperatureUnit)).toFloat()) }
     var driverSeat by remember { mutableIntStateOf(2) }
     var passengerSeat by remember { mutableIntStateOf(2) }
     var rearLeftSeat by remember { mutableIntStateOf(2) }
@@ -1663,6 +1695,12 @@ fun DashboardClimateControls(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var seatPresets by remember { mutableStateOf(loadDashboardSeatClimatePresets(context)) }
+
+    LaunchedEffect(climateOn, statusDisplayTemp, temperatureUnit) {
+        if (climateOn && statusDisplayTemp != null) {
+            displayTemp = statusDisplayTemp.toFloat()
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1704,7 +1742,11 @@ fun DashboardClimateControls(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        if (climateOn) "Climate is running" else "Precondition cabin before departure",
+                        if (climateOn) {
+                            statusDisplayTemp?.let { "Climate is running · ${it}°${temperatureUnit}" } ?: "Climate is running"
+                        } else {
+                            "Precondition cabin before departure"
+                        },
                         fontSize = 13.sp,
                         lineHeight = 16.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1776,6 +1818,29 @@ fun DashboardClimateControls(
                 Switch(checked = defrost, onCheckedChange = { defrost = it })
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Straight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Heated Steering Wheel",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Switch(checked = heatedSteering, onCheckedChange = { heatedSteering = it })
+            }
+
             AnimatedVisibility(visible = !climateOn) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SeatClimateMap(
@@ -1801,7 +1866,7 @@ fun DashboardClimateControls(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = { onStartClimate(climateFahrenheitFromDisplay(displayTemp.toInt(), temperatureUnit), defrost, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat) },
+                    onClick = { onStartClimate(climateFahrenheitFromDisplay(displayTemp.toInt(), temperatureUnit), defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat) },
                     enabled = !climateOn,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
@@ -1990,6 +2055,7 @@ private fun CompactSeatTile(
     ventCapable: Boolean
 ) {
     val accent = dashboardSeatClimateColor(value)
+    val tileAccent = MaterialTheme.colorScheme.primary
     val shortLabel = dashboardSeatClimateShortLabel(value)
     val icon = when (value) {
         6, 7, 8 -> Icons.Filled.Whatshot
@@ -2003,10 +2069,10 @@ private fun CompactSeatTile(
         shape = RoundedCornerShape(18.dp),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = accent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.18f),
+            containerColor = tileAccent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.14f),
             contentColor = accent
         ),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.55f))
+        border = BorderStroke(1.dp, tileAccent.copy(alpha = 0.55f))
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

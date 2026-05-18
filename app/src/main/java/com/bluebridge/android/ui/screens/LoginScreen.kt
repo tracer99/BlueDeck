@@ -52,6 +52,7 @@ fun LoginScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var servicePin by remember { mutableStateOf("") }
+    var kiaOtp by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var saveForBiometrics by remember { mutableStateOf(true) }
     var biometricPromptLaunched by remember { mutableStateOf(false) }
@@ -176,6 +177,7 @@ fun LoginScreen(
                             },
                             onClick = {
                                 authViewModel.setRegion(region)
+                                kiaOtp = ""
                                 regionMenuExpanded = false
                             },
                             modifier = Modifier.heightIn(min = 64.dp),
@@ -310,6 +312,56 @@ fun LoginScreen(
                     .padding(top = 6.dp)
             )
 
+            AnimatedVisibility(
+                visible = uiState.kiaOtpRequired,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = kiaOtp,
+                        onValueChange = { value ->
+                            kiaOtp = value.filter { it.isDigit() }.take(8)
+                            authViewModel.clearError()
+                        },
+                        label = { Text("Kia verification code") },
+                        leadingIcon = { Icon(Icons.Filled.VerifiedUser, null) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.NumberPassword,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                focusManager.clearFocus()
+                                authViewModel.submitKiaOtp(kiaOtp)
+                            }
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                            unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            cursorColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Text(
+                        text = "Required only when Kia asks to trust this device.",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    )
+                }
+            }
+
+
             // Error message
             AnimatedVisibility(
                 visible = uiState.error != null,
@@ -391,8 +443,14 @@ fun LoginScreen(
 
             // Login button
             Button(
-                onClick = { authViewModel.login(username, password, servicePin, saveForBiometrics) },
-                enabled = !uiState.isLoading && username.isNotBlank() && password.isNotBlank(),
+                onClick = {
+                    if (uiState.kiaOtpRequired) {
+                        authViewModel.submitKiaOtp(kiaOtp)
+                    } else {
+                        authViewModel.login(username, password, servicePin, saveForBiometrics)
+                    }
+                },
+                enabled = !uiState.isLoading && username.isNotBlank() && password.isNotBlank() && (!uiState.kiaOtpRequired || kiaOtp.isNotBlank()),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -410,7 +468,7 @@ fun LoginScreen(
                     )
                 } else {
                     Text(
-                        "Sign In",
+                        if (uiState.kiaOtpRequired) "Verify Kia Code" else "Sign In",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )

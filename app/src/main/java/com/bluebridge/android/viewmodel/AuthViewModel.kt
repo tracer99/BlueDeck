@@ -15,7 +15,15 @@ import javax.inject.Inject
 data class LoginUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
-    val success: Boolean = false
+    val success: Boolean = false,
+    val kiaOtpRequired: Boolean = false
+)
+
+private data class PendingLoginCredentials(
+    val username: String,
+    val password: String,
+    val servicePin: String,
+    val saveForBiometrics: Boolean
 )
 
 @HiltViewModel
@@ -33,6 +41,7 @@ class AuthViewModel @Inject constructor(
 
     private val _loginUiState = MutableStateFlow(LoginUiState())
     val loginUiState: StateFlow<LoginUiState> = _loginUiState.asStateFlow()
+    private var pendingLoginCredentials: PendingLoginCredentials? = null
 
     private val savedCredentialsAvailable = MutableStateFlow(secureCredentialsManager.hasSavedCredentials())
 
@@ -57,7 +66,8 @@ class AuthViewModel @Inject constructor(
     fun setRegion(region: Region) {
         viewModelScope.launch {
             preferencesManager.setRegion(region.name)
-            _loginUiState.value = _loginUiState.value.copy(error = null)
+            pendingLoginCredentials = null
+            _loginUiState.value = LoginUiState()
         }
     }
 
@@ -112,15 +122,49 @@ class AuthViewModel @Inject constructor(
             }
             is Result.Error -> {
                 android.util.Log.d("BlueBridge", "Login error: ${result.message}")
-                _loginUiState.value = LoginUiState(error = result.message)
+                if (result.code == 460) {
+                    pendingLoginCredentials = PendingLoginCredentials(username, password, servicePin, saveForBiometrics)
+                    _loginUiState.value = LoginUiState(error = result.message, kiaOtpRequired = true)
+                } else {
+                    _loginUiState.value = LoginUiState(error = result.message)
+                }
             }
             else -> {}
+        }
+    }
+
+    fun submitKiaOtp(code: String) {
+        val pending = pendingLoginCredentials
+        if (pending == null) {
+            _loginUiState.value = LoginUiState(error = "Kia verification expired. Sign in again to request a new code.", kiaOtpRequired = false)
+            return
+        }
+        if (code.isBlank()) {
+            _loginUiState.value = LoginUiState(error = "Enter the Kia verification code.", kiaOtpRequired = true)
+            return
+        }
+        viewModelScope.launch {
+            _loginUiState.value = LoginUiState(isLoading = true, kiaOtpRequired = true)
+            when (val result = repository.completeKiaUsOtpLogin(code)) {
+                is Result.Success -> {
+                    if (pending.saveForBiometrics) {
+                        secureCredentialsManager.saveCredentials(pending.username, pending.password, pending.servicePin)
+                        savedCredentialsAvailable.value = true
+                    }
+                    pendingLoginCredentials = null
+                    _loginUiState.value = LoginUiState(success = true)
+                }
+                is Result.Error -> {
+                    _loginUiState.value = LoginUiState(error = result.message, kiaOtpRequired = true)
+                }
+            }
         }
     }
 
     fun requirePasswordLogin() {
         viewModelScope.launch {
             repository.logout(requirePassword = true)
+            pendingLoginCredentials = null
             _loginUiState.value = LoginUiState()
         }
     }
@@ -132,6 +176,7 @@ class AuthViewModel @Inject constructor(
                 secureCredentialsManager.clearSavedCredentials()
                 savedCredentialsAvailable.value = false
             }
+            pendingLoginCredentials = null
             _loginUiState.value = LoginUiState()
         }
     }

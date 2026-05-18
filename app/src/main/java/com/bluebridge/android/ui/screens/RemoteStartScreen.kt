@@ -32,8 +32,19 @@ fun RemoteStartScreen(
     var localSettings by remember(settings) { mutableStateOf(settings) }
     val commandState by vehicleViewModel.commandState.collectAsStateWithLifecycle()
     val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
+    val status by vehicleViewModel.vehicleStatus.collectAsStateWithLifecycle()
     val isEV = vehicle?.isEV == true
     val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
+    var pendingLockPrompt by remember { mutableStateOf(false) }
+
+    val climateOn = status?.airCtrlOn == true
+    val statusDisplayTemp = status?.airTemp?.let { apiTemperatureToPreferredValue(it.value, it.unit, temperatureUnit) }
+
+    LaunchedEffect(climateOn, statusDisplayTemp, temperatureUnit) {
+        if (climateOn && statusDisplayTemp != null) {
+            localSettings = localSettings.copy(tempF = climateFahrenheitFromDisplay(statusDisplayTemp, temperatureUnit).toString())
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -58,6 +69,19 @@ fun RemoteStartScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             CommandStatusBanner(commandState = commandState)
+
+            if (climateOn) {
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = {
+                        Text(statusDisplayTemp?.let { "Climate running · ${it}°${temperatureUnit}" } ?: "Climate running")
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Filled.AcUnit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                )
+            }
 
             // ─── Climate Settings ──────────────────────────────────────────────
             ControlSection(title = "Climate") {
@@ -158,7 +182,11 @@ fun RemoteStartScreen(
             Button(
                 onClick = {
                     vehicleViewModel.updateRemoteStartSettings(localSettings)
-                    vehicleViewModel.startEngine()
+                    if (status?.doorsLocked == false) {
+                        pendingLockPrompt = true
+                    } else {
+                        vehicleViewModel.startEngine()
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,4 +199,22 @@ fun RemoteStartScreen(
             }
         }
     }
+    if (pendingLockPrompt) {
+        AlertDialog(
+            onDismissRequest = { pendingLockPrompt = false },
+            icon = { Icon(Icons.Filled.Warning, contentDescription = null, tint = WarningAmber) },
+            title = { Text("Lock vehicle first?", fontWeight = FontWeight.Bold) },
+            text = { Text("Climate/remote start requires the doors to be locked. Lock ${vehicle?.displayName ?: "this vehicle"} first, then start automatically.") },
+            confirmButton = {
+                Button(onClick = {
+                    pendingLockPrompt = false
+                    vehicleViewModel.lockThenStartEngine()
+                }) { Text("Lock & Start") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLockPrompt = false }) { Text("Cancel") }
+            }
+        )
+    }
+
 }

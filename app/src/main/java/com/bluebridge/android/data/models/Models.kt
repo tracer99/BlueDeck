@@ -56,6 +56,7 @@ data class Vehicle(
     @SerializedName("vehicleIdentifier") val vehicleIdentifier: String = "",
     @SerializedName("enrollmentId") val enrollmentId: String = "",
     @SerializedName("regid") val regId: String = "",
+    @SerializedName("vehicleKey") val vehicleKey: String = "",
     @SerializedName("vehicleGeneration") val generation: String = "3",
     @SerializedName("nickName") val nickname: String = "",
     @SerializedName("modelCode") val modelCode: String = "",
@@ -83,7 +84,14 @@ data class Vehicle(
     val packageDetails: List<PackageDetail> = emptyList()
 ) {
     val displayName get() = nickname.ifBlank { "$modelYear $modelName" }
-    val isHyundai get() = brandIndicator == "H"
+    val isHyundai get() = brandIndicator.equals("H", ignoreCase = true)
+    val isKia get() = brandIndicator.equals("K", ignoreCase = true)
+    val serviceBrandName: String
+        get() = when (brandIndicator.trim().uppercase()) {
+            "K" -> "Kia"
+            "G" -> "Genesis"
+            else -> "Hyundai"
+        }
 
     val powertrainLookupText: String
         get() = listOf(modelCode, modelName, displayName, hmaModel)

@@ -9,7 +9,7 @@ import javax.inject.Singleton
 
 object BluelinkConstants {
     const val BASE_URL_US_HYUNDAI = "https://api.telematics.hyundaiusa.com/"
-    const val BASE_URL_US_KIA = "https://kiaconnect.com/"
+    const val BASE_URL_US_KIA = "https://api.owners.kia.com/apigw/v1/"
     const val BASE_URL_CA_HYUNDAI = "https://mybluelink.ca/tods/api/"
     const val BASE_URL_CA_KIA = "https://kiaconnect.ca/tods/api/"
     const val BASE_URL_CA_GENESIS = "https://genesisconnect.ca/tods/api/"
@@ -45,7 +45,6 @@ class ApiClient(private val baseUrl: String = BluelinkConstants.BASE_URL_US_HYUN
         .addInterceptor { chain ->
             val request = chain.request().newBuilder()
                 .addHeader("Accept", "application/json, text/plain, */*")
-                .addHeader("Accept-Encoding", "gzip, deflate, br")
                 .addHeader("User-Agent", "okhttp/4.12.0")
                 .addHeader("client_id", BluelinkConstants.CLIENT_ID)
                 .addHeader("clientSecret", BluelinkConstants.CLIENT_SECRET)
