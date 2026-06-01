@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,7 +37,7 @@ fun ControlsScreen(
                 title = { Text("Controls", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -70,7 +71,7 @@ fun ControlsScreen(
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen.copy(alpha = 0.15f)),
-                        border = ButtonDefaults.outlinedButtonBorder
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true)
                     ) {
                         Icon(Icons.Filled.Lock, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -149,7 +150,9 @@ fun ControlsScreen(
 
             // ─── Climate ───────────────────────────────────────────────────────
             ControlSection(title = if (isEV) "EV Climate Preconditioning" else "Climate Settings") {
-                val statusDisplayTemp = status?.airTemp?.let { apiTemperatureToPreferredValue(it.value, it.unit, temperatureUnit) }
+                val statusDisplayTemp = status?.airTemp?.let { airTemp ->
+                    apiTemperatureToPreferredValue(airTemp.value, airTemp.unit, temperatureUnit)
+                }
                 val climateOn = status?.airCtrlOn == true
                 var defrost by remember { mutableStateOf(false) }
                 var heatedSteering by remember { mutableStateOf(false) }

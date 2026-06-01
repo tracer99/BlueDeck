@@ -691,8 +691,8 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             views.setInt(R.id.widget_root, "setBackgroundColor", background)
             listOf(
                 R.id.widget_vehicle_name,
-                R.id.widget_battery_percent,
-                R.id.widget_battery_range,
+                R.id.widget_battery,
+                R.id.widget_range,
                 R.id.widget_action_title,
                 R.id.widget_action_status
             ).forEach { id ->

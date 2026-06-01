@@ -3,7 +3,10 @@ package com.blueandroid.data.repository
 import com.blueandroid.data.api.ApiClient
 import com.blueandroid.data.api.AuApiClient
 import com.blueandroid.data.api.CanadaApiClient
+import com.blueandroid.data.api.canadaUnreadableBodyMessage
 import com.blueandroid.data.api.EuApiClient
+import com.blueandroid.data.api.parseCanadaJsonBody
+import com.blueandroid.data.api.readCanadaHttpBody
 import com.blueandroid.data.api.EuIdentityApiClient
 import com.blueandroid.data.api.KiaUsApiClient
 import com.blueandroid.data.api.Region
@@ -522,7 +525,9 @@ class VehicleRepository @Inject constructor(
         val errorDesc = error?.stringOrNull("errorDesc")
             ?: error?.stringOrNull("errorMessage")
             ?: error?.stringOrNull("message")
+            ?: json?.objectOrNull("responseHeader")?.stringOrNull("responseDesc")
         val errorCode = error?.stringOrNull("errorCode")
+            ?: json?.objectOrNull("responseHeader")?.stringOrNull("responseCode")?.toString()
         return when {
             !errorDesc.isNullOrBlank() && !errorCode.isNullOrBlank() -> "$fallback ($errorCode): $errorDesc"
             !errorDesc.isNullOrBlank() -> errorDesc
@@ -542,8 +547,8 @@ class VehicleRepository @Inject constructor(
     private fun isCanadaAuthFailure(code: Int, json: JsonObject?): Boolean {
         if (code == 401 || code == 403) return true
         val errorCode = json?.objectOrNull("error")?.stringOrNull("errorCode").orEmpty()
-        // 7403 = auth expired, 7602 = access token deleted (server-side invalidation).
-        return errorCode == "7403" || errorCode == "7602"
+        // 7403 = auth expired, 7404 = bad credentials, 7602 = access token deleted.
+        return errorCode == "7403" || errorCode == "7404" || errorCode == "7602"
     }
 
     private suspend fun refreshCanadaAccessToken(): String {
@@ -598,7 +603,11 @@ class VehicleRepository @Inject constructor(
                 deviceId = deviceId,
                 body = mapOf("loginId" to username, "password" to password)
             )
-            val json = response.body()
+            val raw = readCanadaHttpBody(response)
+            val json = parseCanadaJsonBody(raw)
+            if (json == null) {
+                return Result.Error(canadaUnreadableBodyMessage(raw, response.code()), response.code())
+            }
             if (!response.isSuccessful) {
                 return Result.Error(canadaErrorMessage(json, "Canada login failed (${response.code()})"), response.code())
             }
@@ -610,7 +619,7 @@ class VehicleRepository @Inject constructor(
             if (canadaResponseFailed(json)) {
                 return Result.Error(canadaErrorMessage(json, "Canada login failed"))
             }
-            val token = json?.objectOrNull("result")?.objectOrNull("token")
+            val token = json.objectOrNull("result")?.objectOrNull("token")
                 ?: return Result.Error("Canada login did not return a token")
             preferencesManager.saveSession(
                 accessToken = token.stringOrNull("accessToken").orEmpty(),
@@ -639,7 +648,11 @@ class VehicleRepository @Inject constructor(
     private suspend fun fetchCanadaVehicles(accessToken: String, retried: Boolean): Result<List<Vehicle>> {
             val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
             val response = getCanadaApiService().getVehicles(accessToken, deviceId)
-            val json = response.body()
+            val raw = readCanadaHttpBody(response)
+            val json = parseCanadaJsonBody(raw)
+            if (json == null) {
+                return Result.Error(canadaUnreadableBodyMessage(raw, response.code()), response.code())
+            }
             if (!response.isSuccessful || canadaResponseFailed(json)) {
                 val refreshedToken = canadaAccessTokenAfterAuthFailure(response.code(), json, retried)
                 if (refreshedToken != null) return fetchCanadaVehicles(refreshedToken, retried = true)
@@ -654,7 +667,7 @@ class VehicleRepository @Inject constructor(
                 Region.CA_GENESIS -> "G"
                 else -> "H"
             }
-            val vehicles = json?.objectOrNull("result")?.arrayOrNull("vehicles")
+            val vehicles = json.objectOrNull("result")?.arrayOrNull("vehicles")
                 ?.mapNotNull { it.takeIfJsonObject() }
                 ?.map { entry ->
                     val vehicleId = entry.stringOrNull("vehicleId").orEmpty()
@@ -709,7 +722,11 @@ class VehicleRepository @Inject constructor(
         } else {
             api.getCachedVehicleStatus(accessToken, vehicleId, deviceId)
         }
-        val json = response.body()
+        val raw = readCanadaHttpBody(response)
+        val json = parseCanadaJsonBody(raw)
+        if (json == null) {
+            return Result.Error(canadaUnreadableBodyMessage(raw, response.code()), response.code())
+        }
         if (!response.isSuccessful || canadaResponseFailed(json)) {
             val refreshedToken = canadaAccessTokenAfterAuthFailure(response.code(), json, retried)
             if (refreshedToken != null) {
@@ -726,7 +743,7 @@ class VehicleRepository @Inject constructor(
             }
             return Result.Error(canadaErrorMessage(json, "Canadian status fetch failed (${response.code()})"), response.code())
         }
-        val status = json?.objectOrNull("result")?.objectOrNull("status")
+        val status = json.objectOrNull("result")?.objectOrNull("status")
             ?: return Result.Error("Could not parse Canadian vehicle status")
         val data = gson.fromJson(normalizeEuropeDistanceUnits(status), VehicleStatusData::class.java)
         preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
@@ -741,7 +758,11 @@ class VehicleRepository @Inject constructor(
         retried: Boolean = false
     ): String {
         val response = getCanadaApiService().verifyPin(accessToken, vehicleId, deviceId, mapOf("pin" to pin))
-        val json = response.body()
+        val raw = readCanadaHttpBody(response)
+        val json = parseCanadaJsonBody(raw)
+        if (json == null) {
+            throw IllegalStateException(canadaUnreadableBodyMessage(raw, response.code()))
+        }
         if (!response.isSuccessful || canadaResponseFailed(json)) {
             val refreshedToken = canadaAccessTokenAfterAuthFailure(response.code(), json, retried)
             if (refreshedToken != null) {
@@ -752,7 +773,7 @@ class VehicleRepository @Inject constructor(
             }
             throw IllegalStateException(canadaErrorMessage(json, "Canadian PIN verification failed (${response.code()})"))
         }
-        return json?.objectOrNull("result")?.stringOrNull("pAuth")
+        return json.objectOrNull("result")?.stringOrNull("pAuth")
             ?: throw IllegalStateException("Canadian PIN verification did not return pAuth")
     }
 
@@ -1279,7 +1300,10 @@ class VehicleRepository @Inject constructor(
     private suspend fun loginAustralia(username: String, password: String, servicePin: String): Result<Unit> {
         return try {
             val region = currentRegion()
-            getAuApiService().getAuthorizationCookies()
+            getAuApiService().getAuthorizationCookies(
+                clientId = region.auServiceId,
+                redirectUri = "https://${region.auHost}/api/v1/user/oauth2/redirect"
+            )
             registerAuDeviceIfPossible()
             val signInResponse = getAuApiService().signIn(JsonObject().apply {
                 addProperty("email", username)

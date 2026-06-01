@@ -25,13 +25,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Nfc
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
@@ -87,7 +87,7 @@ fun DigitalKeyScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Digital Key", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
@@ -271,7 +271,7 @@ private fun DigitalKeySetupCard(
                 Spacer(Modifier.size(8.dp))
                 Text("Open MyHyundai")
                 Spacer(Modifier.size(8.dp))
-                Icon(Icons.Filled.OpenInNew, null, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, modifier = Modifier.size(16.dp))
             }
             OutlinedButton(onClick = onOpenHyundaiDigitalKey, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Key, null, modifier = Modifier.size(18.dp))

@@ -13,6 +13,10 @@ object BluelinkConstants {
     const val BASE_URL_CA_HYUNDAI = "https://mybluelink.ca/tods/api/"
     const val BASE_URL_CA_KIA = "https://kiaconnect.ca/tods/api/"
     const val BASE_URL_CA_GENESIS = "https://genesisconnect.ca/tods/api/"
+
+    /** Canada TODS web portal (Hyundai/Kia/Genesis share the same SPA client). */
+    const val CA_CLIENT_ID = "HATAHSPACA0232141ED9722C67715A0B"
+    const val CA_CLIENT_SECRET = "CLISCR01AHSPA"
     const val BASE_URL_EU_HYUNDAI = "https://prd.eu-ccapi.hyundai.com:8080/"
     const val BASE_URL_EU_KIA = "https://prd.eu-ccapi.kia.com:8080/"
     const val BASE_URL_EU_GENESIS = "https://prd-eu-ccapi.genesis.com/"

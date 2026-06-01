@@ -541,21 +541,7 @@ fun VehicleStatusCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        val dashboardColors = LocalBlueAndroidDynamicColors.current
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            dashboardColors.dashboardCardBlend,
-                            MaterialTheme.colorScheme.background
-                        )
-                    )
-                )
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -749,7 +735,6 @@ fun VehicleStatusCard(
                         Text("Refresh Status", color = MaterialTheme.colorScheme.secondary)
                     }
                 }
-            }
         }
     }
 }
@@ -883,16 +868,16 @@ private enum class DashboardVehicleImageProfile(
     ELANTRA(R.drawable.vehicle_elantra_blue, "Elantra"),
     SONATA(R.drawable.vehicle_sonata_white, "Sonata"),
     TUCSON(R.drawable.vehicle_tucson_red, "Tucson"),
-    VENUE(R.drawable.vehicle_venue_red, "Venue"),
-    KIA_EV6(R.drawable.vehicle_kia_ev6, "Kia EV6"),
-    KIA_EV9(R.drawable.vehicle_kia_ev9, "Kia EV9"),
-    KIA_K4(R.drawable.vehicle_kia_k4, "Kia K4"),
-    KIA_K5(R.drawable.vehicle_kia_k5, "Kia K5"),
-    KIA_SELTOS(R.drawable.vehicle_kia_seltos, "Kia Seltos"),
-    KIA_TELLURIDE(R.drawable.vehicle_kia_telluride, "Kia Telluride"),
-    KIA_CARNIVAL(R.drawable.vehicle_kia_carnival, "Kia Carnival"),
-    KIA_SORENTO(R.drawable.vehicle_kia_sorento, "Kia Sorento"),
-    KIA_SPORTAGE(R.drawable.vehicle_kia_sportage, "Kia Sportage"),
+    VENUE(R.drawable.vehicle_generic_blue, "Venue"),
+    KIA_EV6(R.drawable.vehicle_ev_generic_blue, "Kia EV6"),
+    KIA_EV9(R.drawable.vehicle_ev_generic_blue, "Kia EV9"),
+    KIA_K4(R.drawable.vehicle_generic_blue, "Kia K4"),
+    KIA_K5(R.drawable.vehicle_generic_blue, "Kia K5"),
+    KIA_SELTOS(R.drawable.vehicle_generic_blue, "Kia Seltos"),
+    KIA_TELLURIDE(R.drawable.vehicle_generic_blue, "Kia Telluride"),
+    KIA_CARNIVAL(R.drawable.vehicle_generic_blue, "Kia Carnival"),
+    KIA_SORENTO(R.drawable.vehicle_generic_blue, "Kia Sorento"),
+    KIA_SPORTAGE(R.drawable.vehicle_generic_blue, "Kia Sportage"),
     SANTA_FE(R.drawable.vehicle_santa_fe_red, "Santa Fe"),
     PALISADE(R.drawable.vehicle_palisade_blue, "Palisade"),
     SANTA_CRUZ(R.drawable.vehicle_santa_cruz_blue, "Santa Cruz"),
