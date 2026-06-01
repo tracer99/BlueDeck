@@ -3,7 +3,7 @@
     <style name="Theme.BlueAndroid" parent="@android:style/Theme.DeviceDefault.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <style name="Theme.BlueAndroid.SplashScreen" parent="Theme.SplashScreen">

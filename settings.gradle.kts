@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BlueBridgeAndroid"
+rootProject.name = "BlueAndroid"
 include(":app")

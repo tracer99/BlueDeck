@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "com.bluebridge.android"
+    namespace = "com.blueandroid"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.bluebridge.android"
+        applicationId = "com.blueandroid"
         minSdk = 26
         targetSdk = 35
         versionCode = 23

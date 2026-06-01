@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bluebridge_icon_background">#07172D</color>
+    <color name="blueandroid_icon_background">#07172D</color>
+    <color name="blueandroid_splash_background">#F8FAFE</color>
+    <color name="widget_background_light">#FFFFFFFF</color>
+    <color name="widget_background_dark">#FF141425</color>
+    <color name="widget_text_primary_light">#FF1A1C23</color>
+    <color name="widget_text_primary_dark">#FFE2E2EC</color>
+    <color name="widget_text_secondary_light">#FF44474F</color>
+    <color name="widget_text_secondary_dark">#FFC3C6CF</color>
 </resources>

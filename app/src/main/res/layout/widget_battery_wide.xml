@@ -18,7 +18,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="BlueBridge"
+            android:text="@string/app_name"
             android:textColor="#F0F4FA"
             android:textSize="13sp"
             android:textStyle="bold"
