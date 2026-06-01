@@ -350,6 +350,23 @@ class VehicleRepository @Inject constructor(
             if (!element.isJsonObject) return null
             val json = element.asJsonObject
 
+            val canadaResponseCode = json.objectOrNull("responseHeader")?.intOrNull("responseCode")
+            if (canadaResponseCode != null && canadaResponseCode != 0) {
+                val error = json.objectOrNull("error")
+                val errorDesc = error?.stringOrNull("errorDesc")
+                    ?: error?.stringOrNull("errorMessage")
+                    ?: error?.stringOrNull("message")
+                val errorCode = error?.stringOrNull("errorCode")
+                val headerDesc = json.objectOrNull("responseHeader")?.stringOrNull("responseDesc")
+                return when {
+                    !errorDesc.isNullOrBlank() && !errorCode.isNullOrBlank() -> "$errorDesc ($errorCode)"
+                    !errorDesc.isNullOrBlank() -> errorDesc
+                    !errorCode.isNullOrBlank() -> "Request failed ($errorCode)"
+                    !headerDesc.isNullOrBlank() -> headerDesc
+                    else -> "Request failed"
+                }
+            }
+
             val pinValid = json.stringOrNull("isBlueLinkServicePinValid")
             if (pinValid?.equals("invalid", ignoreCase = true) == true) {
                 val attempts = json.stringOrNull("remainingAttemptCount")?.takeIf { it.isNotBlank() }
@@ -739,6 +756,69 @@ class VehicleRepository @Inject constructor(
             ?: throw IllegalStateException("Canadian PIN verification did not return pAuth")
     }
 
+    private sealed interface CanadaCommandOutcome {
+        data object Ok : CanadaCommandOutcome
+        data class Failed(val message: String, val code: Int? = null) : CanadaCommandOutcome
+        data class AuthFailed(val httpCode: Int, val json: JsonObject?) : CanadaCommandOutcome
+    }
+
+    private fun readRawResponseBody(response: retrofit2.Response<ResponseBody>): String {
+        val body = try {
+            response.body()?.string().orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        if (body.isNotBlank()) return body
+        return try {
+            response.errorBody()?.string().orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun classifyCanadaCommandResponse(
+        httpCode: Int,
+        rawJson: String,
+        actionName: String
+    ): CanadaCommandOutcome {
+        val json = if (rawJson.isBlank()) {
+            null
+        } else {
+            try {
+                JsonParser.parseString(rawJson).takeIf { it.isJsonObject }?.asJsonObject
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        if (json != null && canadaResponseFailed(json)) {
+            if (isCanadaAuthFailure(httpCode, json)) {
+                return CanadaCommandOutcome.AuthFailed(httpCode, json)
+            }
+            return CanadaCommandOutcome.Failed(
+                canadaErrorMessage(json, "$actionName failed ($httpCode)"),
+                httpCode
+            )
+        }
+
+        if (httpCode !in 200..299) {
+            if (json != null && isCanadaAuthFailure(httpCode, json)) {
+                return CanadaCommandOutcome.AuthFailed(httpCode, json)
+            }
+            val message = extractCommandErrorMessage(rawJson)
+                ?: "$actionName failed ($httpCode)"
+            return CanadaCommandOutcome.Failed(message, httpCode)
+        }
+
+        if (rawJson.isNotBlank()) {
+            extractCommandErrorMessage(rawJson)?.let { message ->
+                return CanadaCommandOutcome.Failed(message, httpCode)
+            }
+        }
+
+        return CanadaCommandOutcome.Ok
+    }
+
     private suspend fun runCanadaPinCommand(
         vin: String,
         registrationId: String,
@@ -746,14 +826,37 @@ class VehicleRepository @Inject constructor(
         call: suspend (accessToken: String, vehicleId: String, pAuth: String, deviceId: String, pin: String) -> retrofit2.Response<ResponseBody>
     ): Result<Unit> {
         return try {
-            val accessToken = getToken()
-            val pin = getServicePin()
-            val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
-            val vehicleId = registrationId.ifBlank { vin }
-            val pAuth = getCanadaPinAuth(accessToken, vehicleId, pin, deviceId)
-            validateRawCommandResponse(call(accessToken, vehicleId, pAuth, deviceId, pin), actionName)
+            executeCanadaPinCommand(vin, registrationId, actionName, call, retried = false)
         } catch (e: Exception) {
             Result.Error(e.message ?: "$actionName failed")
+        }
+    }
+
+    private suspend fun executeCanadaPinCommand(
+        vin: String,
+        registrationId: String,
+        actionName: String,
+        call: suspend (accessToken: String, vehicleId: String, pAuth: String, deviceId: String, pin: String) -> retrofit2.Response<ResponseBody>,
+        retried: Boolean
+    ): Result<Unit> {
+        val accessToken = getToken()
+        val pin = getServicePin()
+        val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+        val vehicleId = registrationId.ifBlank { vin }
+        val pAuth = getCanadaPinAuth(accessToken, vehicleId, pin, deviceId)
+        val response = call(accessToken, vehicleId, pAuth, deviceId, pin)
+        val rawBody = readRawResponseBody(response)
+        return when (val outcome = classifyCanadaCommandResponse(response.code(), rawBody, actionName)) {
+            CanadaCommandOutcome.Ok -> Result.Success(Unit)
+            is CanadaCommandOutcome.Failed -> Result.Error(outcome.message, outcome.code)
+            is CanadaCommandOutcome.AuthFailed -> {
+                val refreshedToken = canadaAccessTokenAfterAuthFailure(outcome.httpCode, outcome.json, retried)
+                if (refreshedToken != null) {
+                    executeCanadaPinCommand(vin, registrationId, actionName, call, retried = true)
+                } else {
+                    Result.Error("Session expired. Please sign in again.", outcome.httpCode)
+                }
+            }
         }
     }
 
