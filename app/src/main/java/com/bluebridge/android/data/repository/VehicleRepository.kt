@@ -182,6 +182,7 @@ class VehicleRepository @Inject constructor(
                 isKiaUsRegion() -> refreshKiaUsAccessToken(refreshToken)
                 isEuropeRegion() -> refreshEuropeAccessToken(refreshToken)
                 isAustraliaRegion() -> refreshAustraliaAccessToken(refreshToken)
+                isCanadaRegion() -> refreshCanadaAccessToken()
                 else -> refreshPasswordBasedSession()
             }
         } catch (e: Exception) {
@@ -521,6 +522,58 @@ class VehicleRepository @Inject constructor(
     private fun canadaOtpRequired(json: JsonObject?): Boolean =
         json?.objectOrNull("error")?.stringOrNull("errorCode") == "7110"
 
+    private fun isCanadaAuthFailure(code: Int, json: JsonObject?): Boolean {
+        if (code == 401 || code == 403) return true
+        val errorCode = json?.objectOrNull("error")?.stringOrNull("errorCode").orEmpty()
+        // 7403 = auth expired, 7602 = access token deleted (server-side invalidation).
+        return errorCode == "7403" || errorCode == "7602"
+    }
+
+    private suspend fun refreshCanadaAccessToken(): String {
+        val savedCredentials = secureCredentialsManager.getSavedCredentials()
+        if (savedCredentials == null) {
+            preferencesManager.clearSession(requirePassword = true)
+            throw IllegalStateException("Session expired. Please sign in again.")
+        }
+
+        return when (
+            val result = loginCanada(
+                username = savedCredentials.username,
+                password = savedCredentials.password,
+                servicePin = savedCredentials.servicePin
+            )
+        ) {
+            is Result.Success -> preferencesManager.accessToken.first()
+                .orEmpty()
+                .takeIf { it.isNotBlank() }
+                ?: run {
+                    preferencesManager.clearSession(requirePassword = true)
+                    throw IllegalStateException("Sign-in succeeded but no access token was saved")
+                }
+            is Result.Error -> {
+                preferencesManager.clearSession(requirePassword = true)
+                throw IllegalStateException(result.message)
+            }
+        }
+    }
+
+    /**
+     * Re-authenticate once when the Canadian API rejects the current access token.
+     * Returns a fresh token, or null when the session should be treated as expired.
+     */
+    private suspend fun canadaAccessTokenAfterAuthFailure(
+        httpCode: Int,
+        json: JsonObject?,
+        alreadyRetried: Boolean
+    ): String? {
+        if (!isCanadaAuthFailure(httpCode, json)) return null
+        if (alreadyRetried) {
+            preferencesManager.clearSession(requirePassword = true)
+            return null
+        }
+        return runCatching { refreshCanadaAccessToken() }.getOrNull()
+    }
+
     private suspend fun loginCanada(username: String, password: String, servicePin: String): Result<Unit> {
         return try {
             val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
@@ -549,6 +602,9 @@ class VehicleRepository @Inject constructor(
                 expiresIn = (token.intOrNull("expireIn") ?: 1800).coerceAtLeast(60) - 60,
                 servicePin = servicePin
             )
+            if (preferencesManager.stayLoggedIn30Days.first()) {
+                secureCredentialsManager.saveCredentials(username, password, servicePin)
+            }
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(e.message ?: "Canada login network error")
@@ -557,11 +613,22 @@ class VehicleRepository @Inject constructor(
 
     private suspend fun getCanadaVehicles(): Result<List<Vehicle>> {
         return try {
-            val token = getToken()
+            fetchCanadaVehicles(accessToken = getToken(), retried = false)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Canada vehicle list network error")
+        }
+    }
+
+    private suspend fun fetchCanadaVehicles(accessToken: String, retried: Boolean): Result<List<Vehicle>> {
             val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
-            val response = getCanadaApiService().getVehicles(token, deviceId)
+            val response = getCanadaApiService().getVehicles(accessToken, deviceId)
             val json = response.body()
             if (!response.isSuccessful || canadaResponseFailed(json)) {
+                val refreshedToken = canadaAccessTokenAfterAuthFailure(response.code(), json, retried)
+                if (refreshedToken != null) return fetchCanadaVehicles(refreshedToken, retried = true)
+                if (isCanadaAuthFailure(response.code(), json)) {
+                    return Result.Error("Session expired. Please sign in again.", response.code())
+                }
                 return Result.Error(canadaErrorMessage(json, "Failed to fetch Canadian vehicles (${response.code()})"), response.code())
             }
             val region = currentRegion()
@@ -590,10 +657,7 @@ class VehicleRepository @Inject constructor(
                         odometer = entry.intOrNull("odometer") ?: 0
                     )
                 }.orEmpty()
-            Result.Success(vehicles)
-        } catch (e: Exception) {
-            Result.Error(e.message ?: "Canada vehicle list network error")
-        }
+            return Result.Success(vehicles)
     }
 
     private fun JsonElement.takeIfJsonObject(): JsonObject? =
@@ -601,33 +665,74 @@ class VehicleRepository @Inject constructor(
 
     private suspend fun getCanadaVehicleStatus(vin: String, forceRefresh: Boolean, registrationId: String): Result<VehicleStatusData> {
         return try {
-            val token = getToken()
-            val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
-            val vehicleId = registrationId.ifBlank { vin }
-            val api = getCanadaApiService()
-            val response = if (forceRefresh) {
-                api.getLiveVehicleStatus(token, vehicleId, deviceId)
-            } else {
-                api.getCachedVehicleStatus(token, vehicleId, deviceId)
-            }
-            val json = response.body()
-            if (!response.isSuccessful || canadaResponseFailed(json)) {
-                return Result.Error(canadaErrorMessage(json, "Canadian status fetch failed (${response.code()})"), response.code())
-            }
-            val status = json?.objectOrNull("result")?.objectOrNull("status")
-                ?: return Result.Error("Could not parse Canadian vehicle status")
-            val data = gson.fromJson(normalizeEuropeDistanceUnits(status), VehicleStatusData::class.java)
-            preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
-            Result.Success(data)
+            fetchCanadaVehicleStatus(
+                accessToken = getToken(),
+                vin = vin,
+                forceRefresh = forceRefresh,
+                registrationId = registrationId,
+                retried = false
+            )
         } catch (e: Exception) {
             Result.Error(e.message ?: "Canada status network error")
         }
     }
 
-    private suspend fun getCanadaPinAuth(accessToken: String, vehicleId: String, pin: String, deviceId: String): String {
+    private suspend fun fetchCanadaVehicleStatus(
+        accessToken: String,
+        vin: String,
+        forceRefresh: Boolean,
+        registrationId: String,
+        retried: Boolean
+    ): Result<VehicleStatusData> {
+        val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+        val vehicleId = registrationId.ifBlank { vin }
+        val api = getCanadaApiService()
+        val response = if (forceRefresh) {
+            api.getLiveVehicleStatus(accessToken, vehicleId, deviceId)
+        } else {
+            api.getCachedVehicleStatus(accessToken, vehicleId, deviceId)
+        }
+        val json = response.body()
+        if (!response.isSuccessful || canadaResponseFailed(json)) {
+            val refreshedToken = canadaAccessTokenAfterAuthFailure(response.code(), json, retried)
+            if (refreshedToken != null) {
+                return fetchCanadaVehicleStatus(
+                    accessToken = refreshedToken,
+                    vin = vin,
+                    forceRefresh = forceRefresh,
+                    registrationId = registrationId,
+                    retried = true
+                )
+            }
+            if (isCanadaAuthFailure(response.code(), json)) {
+                return Result.Error("Session expired. Please sign in again.", response.code())
+            }
+            return Result.Error(canadaErrorMessage(json, "Canadian status fetch failed (${response.code()})"), response.code())
+        }
+        val status = json?.objectOrNull("result")?.objectOrNull("status")
+            ?: return Result.Error("Could not parse Canadian vehicle status")
+        val data = gson.fromJson(normalizeEuropeDistanceUnits(status), VehicleStatusData::class.java)
+        preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
+        return Result.Success(data)
+    }
+
+    private suspend fun getCanadaPinAuth(
+        accessToken: String,
+        vehicleId: String,
+        pin: String,
+        deviceId: String,
+        retried: Boolean = false
+    ): String {
         val response = getCanadaApiService().verifyPin(accessToken, vehicleId, deviceId, mapOf("pin" to pin))
         val json = response.body()
         if (!response.isSuccessful || canadaResponseFailed(json)) {
+            val refreshedToken = canadaAccessTokenAfterAuthFailure(response.code(), json, retried)
+            if (refreshedToken != null) {
+                return getCanadaPinAuth(refreshedToken, vehicleId, pin, deviceId, retried = true)
+            }
+            if (isCanadaAuthFailure(response.code(), json)) {
+                throw IllegalStateException("Session expired. Please sign in again.")
+            }
             throw IllegalStateException(canadaErrorMessage(json, "Canadian PIN verification failed (${response.code()})"))
         }
         return json?.objectOrNull("result")?.stringOrNull("pAuth")

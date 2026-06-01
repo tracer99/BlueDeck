@@ -159,7 +159,13 @@ class VehicleViewModel @Inject constructor(
                     val vehicle = result.data.find { it.vin == savedVin } ?: result.data.firstOrNull()
                     vehicle?.let { selectVehicle(it) }
                 }
-                is Result.Error -> _statusError.value = result.message
+                is Result.Error -> {
+                    _statusError.value = result.message
+                    if (result.message.contains("Session expired", ignoreCase = true)) {
+                        _vehicleStatus.value = null
+                        _selectedVehicle.value = null
+                    }
+                }
                 else -> Unit
             }
         }
