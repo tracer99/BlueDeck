@@ -20,7 +20,7 @@ interface BluelinkApiService {
         @Header("payloadGenerated") payloadGenerated: String = "20200226171938",
         @Header("includeNonConnectedVehicles") includeNonConnectedVehicles: String = "Y",
         @Path("username") username: String
-    ): Response<VehicleListResponse>
+    ): Response<JsonObject>
 
     @GET("ac/v2/rcs/rvs/vehicleStatus")
     suspend fun getVehicleStatus(

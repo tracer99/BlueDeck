@@ -87,6 +87,9 @@ class VehicleViewModel @Inject constructor(
     val distanceUnit = preferencesManager.distanceUnit
         .stateIn(viewModelScope, SharingStarted.Eagerly, "MI")
 
+    val region = preferencesManager.region
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "US_HYUNDAI")
+
     val timeZoneMode = preferencesManager.timeZoneMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, "DEVICE")
 
@@ -154,9 +157,10 @@ class VehicleViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = repository.getVehicles()) {
                 is Result.Success -> {
-                    _vehicles.value = result.data
+                    val vehicles = result.data.map { repository.mergeSeatConfigurations(it) }
+                    _vehicles.value = vehicles
                     val savedVin = preferencesManager.selectedVin.first()
-                    val vehicle = result.data.find { it.vin == savedVin } ?: result.data.firstOrNull()
+                    val vehicle = vehicles.find { it.vin == savedVin } ?: vehicles.firstOrNull()
                     vehicle?.let { selectVehicle(it) }
                 }
                 is Result.Error -> {
@@ -172,7 +176,7 @@ class VehicleViewModel @Inject constructor(
     }
 
     fun selectVehicle(vehicle: Vehicle) {
-        _selectedVehicle.value = vehicle
+        _selectedVehicle.value = repository.mergeSeatConfigurations(vehicle)
         viewModelScope.launch {
             preferencesManager.setSelectedVin(vehicle.vin)
             preferencesManager.cacheWidgetSnapshot(
@@ -233,6 +237,12 @@ class VehicleViewModel @Inject constructor(
                 is Result.Success -> {
                     _vehicleStatus.value = result.data
                     cacheStatusForWidget(vehicle, result.data, "Updated from BlueAndroid")
+                    repository.mergeSeatConfigurations(vehicle).let { merged ->
+                        if (merged.seatConfigurations != vehicle.seatConfigurations) {
+                            _selectedVehicle.value = merged
+                            _vehicles.value = _vehicles.value.map { if (it.vin == merged.vin) merged else it }
+                        }
+                    }
                     result
                 }
                 is Result.Error -> {
@@ -414,7 +424,7 @@ class VehicleViewModel @Inject constructor(
             }
         ) {
             val selected = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
-            val s = requestedSettings
+            val s = requestedSettings.clampedFor(selected)
             repository.startEngine(
                 vin = selected.vin,
                 tempF = s.tempF,
@@ -532,15 +542,24 @@ class VehicleViewModel @Inject constructor(
         }
     ) {
         val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
+        val clamped = vehicle.clampClimateSeatSettings(
+            ClimateSeatSettings(
+                heatedSteering = heatedSteering,
+                driverSeat = driverSeat,
+                passengerSeat = passengerSeat,
+                rearLeftSeat = rearLeftSeat,
+                rearRightSeat = rearRightSeat
+            )
+        )
         repository.startClimate(
             vin = vehicle.vin,
             tempF = tempF,
             defrost = defrost,
-            heatedSteering = heatedSteering,
-            driverSeatHeat = driverSeat,
-            passengerSeatHeat = passengerSeat,
-            rearLeftSeatHeat = rearLeftSeat,
-            rearRightSeatHeat = rearRightSeat,
+            heatedSteering = clamped.heatedSteering,
+            driverSeatHeat = clamped.driverSeat,
+            passengerSeatHeat = clamped.passengerSeat,
+            rearLeftSeatHeat = clamped.rearLeftSeat,
+            rearRightSeatHeat = clamped.rearRightSeat,
             isEv = vehicle.isEV,
             registrationId = vehicle.regId,
             generation = vehicle.generation,
@@ -1090,5 +1109,24 @@ class VehicleViewModel @Inject constructor(
 
     fun clearError() {
         _statusError.value = null
+    }
+
+    private fun RemoteStartSettings.clampedFor(vehicle: Vehicle): RemoteStartSettings {
+        val clamped = vehicle.clampClimateSeatSettings(
+            ClimateSeatSettings(
+                heatedSteering = heatedSteering,
+                driverSeat = driverSeatHeat,
+                passengerSeat = passengerSeatHeat,
+                rearLeftSeat = rearLeftSeatHeat,
+                rearRightSeat = rearRightSeatHeat
+            )
+        )
+        return copy(
+            heatedSteering = clamped.heatedSteering,
+            driverSeatHeat = clamped.driverSeat,
+            passengerSeatHeat = clamped.passengerSeat,
+            rearLeftSeatHeat = clamped.rearLeftSeat,
+            rearRightSeatHeat = clamped.rearRightSeat
+        )
     }
 }

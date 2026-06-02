@@ -47,8 +47,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.blueandroid.R
 import com.blueandroid.data.models.CommandHistoryEntry
 import com.blueandroid.data.models.Vehicle
+import com.blueandroid.data.models.VehicleFeatureCapabilities
 import com.blueandroid.data.models.VehicleStatusData
 import com.blueandroid.data.models.hasFuelTelemetryFor
+import com.blueandroid.data.models.resolveCapabilities
 import com.blueandroid.ui.components.CommandStatusBanner
 import com.blueandroid.ui.theme.*
 import com.blueandroid.viewmodel.CommandStatus
@@ -90,6 +92,10 @@ fun DashboardScreen(
     val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     val distanceUnit by vehicleViewModel.distanceUnit.collectAsStateWithLifecycle()
     val customDashboardImageUri by vehicleViewModel.customDashboardImageUri.collectAsStateWithLifecycle()
+    val region by vehicleViewModel.region.collectAsStateWithLifecycle()
+    val featureCaps = remember(selectedVehicle, region) {
+        selectedVehicle?.resolveCapabilities(region)
+    }
     val context = LocalContext.current
     var pendingConfirmation by remember { mutableStateOf<DashboardConfirmationRequest?>(null) }
 
@@ -223,6 +229,7 @@ fun DashboardScreen(
                         QuickActionsGrid(
                             vehicle = selectedVehicle,
                             status = vehicleStatus,
+                            featureCaps = featureCaps,
                             onLock = {
                                 pendingConfirmation = DashboardConfirmationRequest(
                                     title = "Lock doors?",
@@ -308,6 +315,7 @@ fun DashboardScreen(
                         DashboardClimateControls(
                             vehicle = selectedVehicle,
                             status = vehicleStatus,
+                            featureCaps = featureCaps,
                             temperatureUnit = temperatureUnit,
                             onStartClimate = { tempF, defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat ->
                                 if (vehicleStatus?.doorsLocked == false) {
@@ -384,9 +392,11 @@ fun DashboardScreen(
                             modifier = Modifier.padding(bottom = 2.dp)
                         )
                         FeatureTilesGrid(
+                            featureCaps = featureCaps,
                             onLocation = onNavigateToLocation,
                             onDriverProfiles = onNavigateToDriverProfiles,
-                            onDigitalKey = onNavigateToDigitalKey
+                            onDigitalKey = onNavigateToDigitalKey,
+                            onValetMode = onNavigateToValetMode
                         )
                     }
                 }
@@ -1536,6 +1546,7 @@ private fun DashboardQuickActionButton(
 fun QuickActionsGrid(
     vehicle: Vehicle?,
     status: VehicleStatusData?,
+    featureCaps: VehicleFeatureCapabilities?,
     onLock: () -> Unit,
     onUnlock: () -> Unit,
     onRemoteStart: () -> Unit,
@@ -1579,7 +1590,7 @@ fun QuickActionsGrid(
                 )
             }
         }
-        if (isEV) {
+        if (isEV && featureCaps?.showEvCharging != false) {
             val ev = status?.evStatus
             val plugCode = ev?.batteryPlugin ?: 0
             val isPluggedIn = plugCode != 0
@@ -1662,6 +1673,7 @@ fun VehiclePickerDialog(
 fun DashboardClimateControls(
     vehicle: Vehicle?,
     status: VehicleStatusData?,
+    featureCaps: VehicleFeatureCapabilities?,
     temperatureUnit: String,
     onStartClimate: (Int, Boolean, Boolean, Int, Int, Int, Int) -> Unit,
     onStopClimate: () -> Unit,
@@ -1803,46 +1815,53 @@ fun DashboardClimateControls(
                 Switch(checked = defrost, onCheckedChange = { defrost = it })
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.Straight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Heated Steering Wheel",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+            if (featureCaps?.showHeatedSteering != false) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Straight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Heated Steering Wheel",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Switch(checked = heatedSteering, onCheckedChange = { heatedSteering = it })
                 }
-                Switch(checked = heatedSteering, onCheckedChange = { heatedSteering = it })
             }
 
-            AnimatedVisibility(visible = !climateOn) {
+            AnimatedVisibility(visible = !climateOn && featureCaps?.showSeatClimateControls != false) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SeatClimateMap(
-                        driverSeat = driverSeat,
-                        passengerSeat = passengerSeat,
-                        rearLeftSeat = rearLeftSeat,
-                        rearRightSeat = rearRightSeat,
-                        onDriverSeat = { driverSeat = it },
-                        onPassengerSeat = { passengerSeat = it },
-                        onRearLeftSeat = { rearLeftSeat = it },
-                        onRearRightSeat = { rearRightSeat = it }
-                    )
-                    DashboardSeatPresetStrip(
-                        presets = seatPresets,
-                        onApply = { applyPreset(it) },
-                        onManage = onManageSeatPresets
-                    )
+                    if (featureCaps != null) {
+                        SeatClimateMap(
+                            featureCaps = featureCaps,
+                            driverSeat = driverSeat,
+                            passengerSeat = passengerSeat,
+                            rearLeftSeat = rearLeftSeat,
+                            rearRightSeat = rearRightSeat,
+                            onDriverSeat = { driverSeat = it },
+                            onPassengerSeat = { passengerSeat = it },
+                            onRearLeftSeat = { rearLeftSeat = it },
+                            onRearRightSeat = { rearRightSeat = it }
+                        )
+                    }
+                    if (featureCaps?.showSeatClimatePresets != false) {
+                        DashboardSeatPresetStrip(
+                            presets = seatPresets,
+                            onApply = { applyPreset(it) },
+                            onManage = onManageSeatPresets
+                        )
+                    }
                 }
             }
 
@@ -1953,6 +1972,7 @@ private fun DashboardSeatPresetStrip(
 
 @Composable
 private fun SeatClimateMap(
+    featureCaps: VehicleFeatureCapabilities,
     driverSeat: Int,
     passengerSeat: Int,
     rearLeftSeat: Int,
@@ -1962,6 +1982,11 @@ private fun SeatClimateMap(
     onRearLeftSeat: (Int) -> Unit,
     onRearRightSeat: (Int) -> Unit
 ) {
+    val showDriver = featureCaps.driver.showHeat || featureCaps.driver.showVent
+    val showPassenger = featureCaps.passenger.showHeat || featureCaps.passenger.showVent
+    val showRearLeft = featureCaps.rearLeft.showHeat || featureCaps.rearLeft.showVent
+    val showRearRight = featureCaps.rearRight.showHeat || featureCaps.rearRight.showVent
+    if (!showDriver && !showPassenger && !showRearLeft && !showRearRight) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1989,43 +2014,83 @@ private fun SeatClimateMap(
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CompactSeatTile(
-                    label = "Driver",
-                    value = driverSeat,
-                    onClick = { onDriverSeat(nextSeatClimateLevel(driverSeat, ventCapable = true)) },
-                    modifier = Modifier.weight(1f),
-                    ventCapable = true
-                )
-                CompactSeatTile(
-                    label = "Passenger",
-                    value = passengerSeat,
-                    onClick = { onPassengerSeat(nextSeatClimateLevel(passengerSeat, ventCapable = true)) },
-                    modifier = Modifier.weight(1f),
-                    ventCapable = true
-                )
+            if (showDriver || showPassenger) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (showDriver) {
+                        CompactSeatTile(
+                            label = "Driver",
+                            value = driverSeat,
+                            onClick = {
+                                onDriverSeat(
+                                    nextSeatClimateLevel(
+                                        driverSeat,
+                                        ventCapable = featureCaps.driver.ventCapableForSelector
+                                    )
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            ventCapable = featureCaps.driver.ventCapableForSelector
+                        )
+                    }
+                    if (showPassenger) {
+                        CompactSeatTile(
+                            label = "Passenger",
+                            value = passengerSeat,
+                            onClick = {
+                                onPassengerSeat(
+                                    nextSeatClimateLevel(
+                                        passengerSeat,
+                                        ventCapable = featureCaps.passenger.ventCapableForSelector
+                                    )
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            ventCapable = featureCaps.passenger.ventCapableForSelector
+                        )
+                    }
+                }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CompactSeatTile(
-                    label = "Rear Left",
-                    value = rearLeftSeat,
-                    onClick = { onRearLeftSeat(nextSeatClimateLevel(rearLeftSeat, ventCapable = false)) },
-                    modifier = Modifier.weight(1f),
-                    ventCapable = false
-                )
-                CompactSeatTile(
-                    label = "Rear Right",
-                    value = rearRightSeat,
-                    onClick = { onRearRightSeat(nextSeatClimateLevel(rearRightSeat, ventCapable = false)) },
-                    modifier = Modifier.weight(1f),
-                    ventCapable = false
-                )
+            if (showRearLeft || showRearRight) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (showRearLeft) {
+                        CompactSeatTile(
+                            label = "Rear Left",
+                            value = rearLeftSeat,
+                            onClick = {
+                                onRearLeftSeat(
+                                    nextSeatClimateLevel(
+                                        rearLeftSeat,
+                                        ventCapable = featureCaps.rearLeft.ventCapableForSelector
+                                    )
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            ventCapable = featureCaps.rearLeft.ventCapableForSelector
+                        )
+                    }
+                    if (showRearRight) {
+                        CompactSeatTile(
+                            label = "Rear Right",
+                            value = rearRightSeat,
+                            onClick = {
+                                onRearRightSeat(
+                                    nextSeatClimateLevel(
+                                        rearRightSeat,
+                                        ventCapable = featureCaps.rearRight.ventCapableForSelector
+                                    )
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            ventCapable = featureCaps.rearRight.ventCapableForSelector
+                        )
+                    }
+                }
             }
         }
     }
@@ -2127,37 +2192,62 @@ private fun dashboardSeatClimateLabel(value: Int): String = when (value) {
 
 @Composable
 fun FeatureTilesGrid(
+    featureCaps: VehicleFeatureCapabilities?,
     onLocation: () -> Unit,
     onDriverProfiles: () -> Unit,
-    onDigitalKey: () -> Unit
+    onDigitalKey: () -> Unit,
+    onValetMode: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        DashboardQuickActionButton(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Filled.LocationOn,
-            label = "GPS Location",
-            tint = MaterialTheme.colorScheme.secondary,
-            onClick = onLocation,
-            compact = true
-        )
-        DashboardQuickActionButton(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Filled.People,
-            label = "Profiles",
-            tint = SuccessGreen,
-            onClick = onDriverProfiles,
-            compact = true
-        )
-        DashboardQuickActionButton(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Filled.Key,
-            label = "Digital Key",
-            tint = MaterialTheme.colorScheme.tertiary,
-            onClick = onDigitalKey,
-            compact = true
-        )
+    val showLocation = featureCaps?.showLocation != false
+    val showDigitalKey = featureCaps?.showDigitalKey != false
+    val showValet = featureCaps?.showValetMode == true
+    if (!showLocation && !showDigitalKey && !showValet) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (showLocation) {
+                DashboardQuickActionButton(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.LocationOn,
+                    label = "GPS Location",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    onClick = onLocation,
+                    compact = true
+                )
+            }
+            DashboardQuickActionButton(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Filled.People,
+                label = "Profiles",
+                tint = SuccessGreen,
+                onClick = onDriverProfiles,
+                compact = true
+            )
+            if (showDigitalKey) {
+                DashboardQuickActionButton(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.Key,
+                    label = "Digital Key",
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    onClick = onDigitalKey,
+                    compact = true
+                )
+            }
+        }
+        if (showValet) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                DashboardQuickActionButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = Icons.Filled.Security,
+                    label = "Valet Mode",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    onClick = onValetMode,
+                    compact = true
+                )
+            }
+        }
     }
 }

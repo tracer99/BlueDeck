@@ -60,6 +60,7 @@ class VehicleRepository @Inject constructor(
     private var kiaUsApiClientDeviceId: String? = null
     private var pendingKiaUsOtpChallenge: KiaUsOtpChallenge? = null
     private val gson = Gson()
+    private val seatConfigurationsByVin = mutableMapOf<String, SeatConfigurations>()
 
     private suspend fun currentRegion(): Region {
         val regionStr = preferencesManager.region.first()
@@ -1569,11 +1570,13 @@ class VehicleRepository @Inject constructor(
             ?: runCatching { element.asString.toDouble() }.getOrNull()
     }
 
-    private fun extractKiaUsSeatConfigurations(source: JsonObject): SeatConfigurations? {
+    private fun extractSeatConfigurations(source: JsonObject): SeatConfigurations? {
         val directArrays = listOfNotNull(
             source.childArray("vehicleConfig.vehicleDetail.seatConfigurations.seatConfigs"),
             source.childArray("vehicleConfig.vehicleDetail.vehicle.seatConfigurations.seatConfigs"),
             source.childArray("vehicleConfig.seatConfigurations.seatConfigs"),
+            source.childArray("vehicleDetails.seatConfigurations.seatConfigs"),
+            source.childArray("vehicleDetail.seatConfigurations.seatConfigs"),
             source.childArray("seatConfigurations.seatConfigs"),
             source.arrayOrNull("seatConfigs"),
             source.arrayOrNull("seatConfig")
@@ -1590,17 +1593,19 @@ class VehicleRepository @Inject constructor(
                         ?: seat.stringOrNull("seatLocation")
                         ?: seat.stringOrNull("location")
                         ?: (index + 1).toString(),
-                    heatingCapable = seat.stringOrNull("heatingCapable")
-                        ?: seat.stringOrNull("heatCapable")
-                        ?: seat.stringOrNull("heaterCapable")
-                        ?: seat.stringOrNull("heatSupported")
-                        ?: seat.stringOrNull("heatingSupported")
-                        ?: "",
-                    ventCapable = seat.stringOrNull("ventCapable")
-                        ?: seat.stringOrNull("ventilationCapable")
-                        ?: seat.stringOrNull("ventSupported")
-                        ?: seat.stringOrNull("coolingCapable")
-                        ?: "",
+                    heatingCapable = seat.readCapabilityFlag(
+                        "heatingCapable",
+                        "heatCapable",
+                        "heaterCapable",
+                        "heatSupported",
+                        "heatingSupported"
+                    ),
+                    ventCapable = seat.readCapabilityFlag(
+                        "ventCapable",
+                        "ventilationCapable",
+                        "ventSupported",
+                        "coolingCapable"
+                    ),
                     supportedLevels = seat.stringOrNull("supportedLevels")
                         ?: seat.stringOrNull("supportLevels")
                         ?: seat.stringOrNull("levels")
@@ -1608,10 +1613,44 @@ class VehicleRepository @Inject constructor(
                 )
             }
             .filter { it.seatLocationId.isNotBlank() }
+            .distinctBy { it.seatLocationId.normalizeSeatIdForExtraction() }
             .toList()
 
         return parsed.takeIf { it.isNotEmpty() }?.let { SeatConfigurations(it) }
     }
+
+    private fun JsonObject.readCapabilityFlag(vararg names: String): String {
+        for (name in names) {
+            val value = get(name) ?: continue
+            if (value.isJsonNull) continue
+            value.asKiaBooleanOrNull()?.let { return if (it) "Y" else "N" }
+            runCatching { value.asNumber }.getOrNull()?.let { return if (it.toInt() != 0) "Y" else "N" }
+            runCatching { value.asString }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return ""
+    }
+
+    private fun String.normalizeSeatIdForExtraction(): String = trim()
+        .uppercase()
+        .replace('-', '_')
+        .replace(' ', '_')
+
+    private fun enrollmentEntryForVin(enrollment: JsonObject, vin: String): JsonObject? {
+        val normalizedVin = vin.trim()
+        if (normalizedVin.isEmpty()) return null
+        val details = enrollment.arrayOrNull("enrolledVehicleDetails") ?: return null
+        return details.asSequence()
+            .mapNotNull { it.asKiaJsonObjectOrNull() }
+            .firstOrNull { entry ->
+                val vehicle = entry.objectOrNull("vehicleDetails") ?: entry.objectOrNull("vehicle")
+                vehicle?.stringOrNull("vin")?.equals(normalizedVin, ignoreCase = true) == true
+            }
+    }
+
+    private fun extractSeatConfigurationsFromEnrollment(entry: JsonObject): SeatConfigurations? =
+        extractSeatConfigurations(entry)
+            ?: entry.objectOrNull("vehicleDetails")?.let { extractSeatConfigurations(it) }
+            ?: entry.objectOrNull("vehicle")?.let { extractSeatConfigurations(it) }
 
     private fun normalizeKiaUsStatus(status: JsonObject): JsonObject {
         val normalized = status.deepCopy()
@@ -1686,13 +1725,26 @@ class VehicleRepository @Inject constructor(
         return normalized
     }
 
-    private fun kiaUsCachedStatusPayload(json: JsonObject?): JsonObject? {
-        val vehicleInfo = json
+    private fun kiaUsVehicleInfoEntry(json: JsonObject?): JsonObject? =
+        json
             ?.objectOrNull("payload")
             ?.arrayOrNull("vehicleInfoList")
             ?.firstOrNull()
             ?.asKiaJsonObjectOrNull()
-        return vehicleInfo?.childObject("lastVehicleInfo.vehicleStatusRpt.vehicleStatus")
+
+    private fun kiaUsCachedStatusPayload(json: JsonObject?): JsonObject? =
+        kiaUsVehicleInfoEntry(json)?.childObject("lastVehicleInfo.vehicleStatusRpt.vehicleStatus")
+
+    fun mergeSeatConfigurations(vehicle: Vehicle): Vehicle {
+        if (!vehicle.seatConfigurations?.seatConfigs.isNullOrEmpty()) return vehicle
+        val cached = seatConfigurationsByVin[vehicle.vin.trim()] ?: return vehicle
+        return vehicle.copy(seatConfigurations = cached)
+    }
+
+    private fun cacheSeatConfigurations(vin: String, configs: SeatConfigurations?) {
+        val normalizedVin = vin.trim()
+        if (normalizedVin.isEmpty() || configs == null || configs.seatConfigs.isEmpty()) return
+        seatConfigurationsByVin[normalizedVin] = configs
     }
 
     private fun kiaUsForcedStatusPayload(json: JsonObject?): JsonObject? =
@@ -1703,7 +1755,7 @@ class VehicleRepository @Inject constructor(
         add("vehicleConfigReq", JsonObject().apply {
             addProperty("airTempRange", "0")
             addProperty("maintenance", "1")
-            addProperty("seatHeatCoolOption", "0")
+            addProperty("seatHeatCoolOption", "1")
             addProperty("vehicle", "1")
             addProperty("vehicleFeature", "0")
         })
@@ -1889,7 +1941,7 @@ class VehicleRepository @Inject constructor(
                 var colorName = vehicleObj.stringOrNull("exteriorColor") ?: vehicleObj.stringOrNull("color").orEmpty()
                 var generation = vehicleObj.stringOrNull("generation") ?: vehicleObj.stringOrNull("vehicleGeneration") ?: "3"
                 var odometer = vehicleObj.intOrNull("odometer") ?: vehicleObj.intOrNull("mileage") ?: 0
-                var seatConfigurations: SeatConfigurations? = extractKiaUsSeatConfigurations(vehicleObj)
+                var seatConfigurations: SeatConfigurations? = extractSeatConfigurations(vehicleObj)
 
                 if (vehicleKey.isNotBlank()) {
                     try {
@@ -1915,7 +1967,11 @@ class VehicleRepository @Inject constructor(
                             colorName = vehicle?.stringOrNull("exteriorColor") ?: colorName
                             generation = vehicleInfo?.childString("vehicleConfig.vehicleDetail.device.telematics.generation") ?: generation
                             odometer = vehicle?.intOrNull("mileage") ?: odometer
-                            seatConfigurations = extractKiaUsSeatConfigurations(vehicleInfo ?: JsonObject()) ?: seatConfigurations
+                            val fromInfo = extractSeatConfigurations(vehicleInfo ?: JsonObject())
+                                ?: vehicleInfo?.childObject("vehicleConfig.vehicleDetail.vehicle")
+                                    ?.let { extractSeatConfigurations(it) }
+                            seatConfigurations = fromInfo ?: seatConfigurations
+                            cacheSeatConfigurations(vin, seatConfigurations)
                         }
                     } catch (_: Exception) {
                         // Keep the vehicle entry from ownr/gvl even when the optional detail call fails.
@@ -1975,6 +2031,11 @@ class VehicleRepository @Inject constructor(
             }) ?: return Result.Error("Could not parse Kia vehicle status")
             val normalizedStatus = normalizeKiaUsStatus(rawStatus)
             populateKiaUsChargeTargetsFromApi(sid, vehicleKey, normalizedStatus)
+            kiaUsVehicleInfoEntry(json)?.let { entry ->
+                val fromInfo = extractSeatConfigurations(entry)
+                    ?: entry.childObject("vehicleConfig.vehicleDetail.vehicle")?.let { extractSeatConfigurations(it) }
+                cacheSeatConfigurations(vin, fromInfo)
+            }
             val data = gson.fromJson(normalizedStatus, VehicleStatusData::class.java)
             preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
             Result.Success(data)
@@ -2173,9 +2234,30 @@ class VehicleRepository @Inject constructor(
                 }
             }
             if (response.isSuccessful) {
-                val vehicles = response.body()?.vehicles?.map { detail ->
-                    detail.vehicle.copy(packageDetails = detail.packageDetails)
-                } ?: emptyList()
+                val body = response.body()
+                val vehicles = if (body == null) {
+                    emptyList()
+                } else {
+                    val listResponse = gson.fromJson(body, VehicleListResponse::class.java)
+                    listResponse.vehicles.map { detail ->
+                        var vehicle = detail.vehicle.copy(packageDetails = detail.packageDetails)
+                        if (vehicle.seatConfigurations == null) {
+                            val extracted = enrollmentEntryForVin(body, vehicle.vin)?.let { entry ->
+                                extractSeatConfigurationsFromEnrollment(entry)
+                            } ?: extractSeatConfigurations(body)
+                            if (extracted != null) {
+                                vehicle = vehicle.copy(seatConfigurations = extracted)
+                                cacheSeatConfigurations(vehicle.vin, extracted)
+                            } else {
+                                android.util.Log.d(
+                                    "VehicleRepository",
+                                    "seat configs missing after login for ${vehicle.vin}"
+                                )
+                            }
+                        }
+                        vehicle
+                    }
+                }
                 Result.Success(vehicles)
             } else {
                 if (response.code() == 401 || response.code() == 403) {

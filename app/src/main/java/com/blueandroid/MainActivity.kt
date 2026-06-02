@@ -319,6 +319,7 @@ class MainActivity : FragmentActivity() {
 
                             composable("seat_presets") {
                                 SeatClimatePresetsScreen(
+                                    vehicleViewModel = vehicleViewModel,
                                     onNavigateBack = { navController.popBackStack() }
                                 )
                             }

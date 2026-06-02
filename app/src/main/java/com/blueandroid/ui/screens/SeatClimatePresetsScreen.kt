@@ -24,6 +24,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.blueandroid.data.models.VehicleFeatureCapabilities
+import com.blueandroid.data.models.resolveCapabilities
+import com.blueandroid.viewmodel.VehicleViewModel
 
 private val SeatHeatOrange = Color(0xFFFF9800)
 private val SeatVentBlue = Color(0xFF03A9F4)
@@ -31,9 +35,13 @@ private val SeatVentBlue = Color(0xFF03A9F4)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SeatClimatePresetsScreen(
+    vehicleViewModel: VehicleViewModel,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
+    val region by vehicleViewModel.region.collectAsStateWithLifecycle()
+    val featureCaps = remember(vehicle, region) { vehicle?.resolveCapabilities(region) }
     var presets by remember { mutableStateOf(loadSeatPresetEditorPresets(context)) }
     var resetDialog by remember { mutableStateOf(false) }
 
@@ -90,7 +98,11 @@ fun SeatClimatePresetsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                "Name each preset and choose the seat heat/vent level to send when you start climate. Rear seats are limited to heat because rear ventilation is not reported as supported.",
+                if (featureCaps == null) {
+                    "Name each preset and choose the seat heat/vent level to send when you start climate."
+                } else {
+                    "Name each preset and choose seat levels for the positions your vehicle supports."
+                },
                 fontSize = 14.sp,
                 lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -100,6 +112,7 @@ fun SeatClimatePresetsScreen(
                 SeatPresetEditorCard(
                     index = index,
                     preset = preset,
+                    featureCaps = featureCaps,
                     onPresetChange = { updatePreset(index, it) }
                 )
             }
@@ -111,6 +124,7 @@ fun SeatClimatePresetsScreen(
 private fun SeatPresetEditorCard(
     index: Int,
     preset: SeatPresetEditorPreset,
+    featureCaps: VehicleFeatureCapabilities?,
     onPresetChange: (SeatPresetEditorPreset) -> Unit
 ) {
     Card(
@@ -147,16 +161,19 @@ private fun SeatPresetEditorCard(
                 )
             }
 
-            PresetSeatMap(
-                driverSeat = preset.driverSeat,
-                passengerSeat = preset.passengerSeat,
-                rearLeftSeat = preset.rearLeftSeat,
-                rearRightSeat = preset.rearRightSeat,
-                onDriverSeat = { onPresetChange(preset.copy(driverSeat = it)) },
-                onPassengerSeat = { onPresetChange(preset.copy(passengerSeat = it)) },
-                onRearLeftSeat = { onPresetChange(preset.copy(rearLeftSeat = it)) },
-                onRearRightSeat = { onPresetChange(preset.copy(rearRightSeat = it)) }
-            )
+            if (featureCaps == null || featureCaps.showSeatClimatePresets) {
+                PresetSeatMap(
+                    featureCaps = featureCaps,
+                    driverSeat = preset.driverSeat,
+                    passengerSeat = preset.passengerSeat,
+                    rearLeftSeat = preset.rearLeftSeat,
+                    rearRightSeat = preset.rearRightSeat,
+                    onDriverSeat = { onPresetChange(preset.copy(driverSeat = it)) },
+                    onPassengerSeat = { onPresetChange(preset.copy(passengerSeat = it)) },
+                    onRearLeftSeat = { onPresetChange(preset.copy(rearLeftSeat = it)) },
+                    onRearRightSeat = { onPresetChange(preset.copy(rearRightSeat = it)) }
+                )
+            }
 
             Text(
                 preset.summary(),
@@ -170,6 +187,7 @@ private fun SeatPresetEditorCard(
 
 @Composable
 private fun PresetSeatMap(
+    featureCaps: VehicleFeatureCapabilities?,
     driverSeat: Int,
     passengerSeat: Int,
     rearLeftSeat: Int,
@@ -179,6 +197,12 @@ private fun PresetSeatMap(
     onRearLeftSeat: (Int) -> Unit,
     onRearRightSeat: (Int) -> Unit
 ) {
+    val showDriver = featureCaps?.driver?.let { it.showHeat || it.showVent } ?: true
+    val showPassenger = featureCaps?.passenger?.let { it.showHeat || it.showVent } ?: true
+    val showRearLeft = featureCaps?.rearLeft?.let { it.showHeat || it.showVent } ?: true
+    val showRearRight = featureCaps?.rearRight?.let { it.showHeat || it.showVent } ?: true
+    if (!showDriver && !showPassenger && !showRearLeft && !showRearRight) return
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -187,43 +211,59 @@ private fun PresetSeatMap(
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            PresetSeatTile(
-                label = "Driver",
-                value = driverSeat,
-                ventCapable = true,
-                onClick = { onDriverSeat(nextPresetSeatLevel(driverSeat, ventCapable = true)) },
-                modifier = Modifier.weight(1f)
-            )
-            PresetSeatTile(
-                label = "Passenger",
-                value = passengerSeat,
-                ventCapable = true,
-                onClick = { onPassengerSeat(nextPresetSeatLevel(passengerSeat, ventCapable = true)) },
-                modifier = Modifier.weight(1f)
-            )
+        if (showDriver || showPassenger) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (showDriver) {
+                    val ventCapable = featureCaps?.driver?.ventCapableForSelector ?: true
+                    PresetSeatTile(
+                        label = "Driver",
+                        value = driverSeat,
+                        ventCapable = ventCapable,
+                        onClick = { onDriverSeat(nextPresetSeatLevel(driverSeat, ventCapable = ventCapable)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (showPassenger) {
+                    val ventCapable = featureCaps?.passenger?.ventCapableForSelector ?: true
+                    PresetSeatTile(
+                        label = "Passenger",
+                        value = passengerSeat,
+                        ventCapable = ventCapable,
+                        onClick = { onPassengerSeat(nextPresetSeatLevel(passengerSeat, ventCapable = ventCapable)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            PresetSeatTile(
-                label = "Rear Left",
-                value = rearLeftSeat,
-                ventCapable = false,
-                onClick = { onRearLeftSeat(nextPresetSeatLevel(rearLeftSeat, ventCapable = false)) },
-                modifier = Modifier.weight(1f)
-            )
-            PresetSeatTile(
-                label = "Rear Right",
-                value = rearRightSeat,
-                ventCapable = false,
-                onClick = { onRearRightSeat(nextPresetSeatLevel(rearRightSeat, ventCapable = false)) },
-                modifier = Modifier.weight(1f)
-            )
+        if (showRearLeft || showRearRight) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (showRearLeft) {
+                    val ventCapable = featureCaps?.rearLeft?.ventCapableForSelector ?: false
+                    PresetSeatTile(
+                        label = "Rear Left",
+                        value = rearLeftSeat,
+                        ventCapable = ventCapable,
+                        onClick = { onRearLeftSeat(nextPresetSeatLevel(rearLeftSeat, ventCapable = ventCapable)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (showRearRight) {
+                    val ventCapable = featureCaps?.rearRight?.ventCapableForSelector ?: false
+                    PresetSeatTile(
+                        label = "Rear Right",
+                        value = rearRightSeat,
+                        ventCapable = ventCapable,
+                        onClick = { onRearRightSeat(nextPresetSeatLevel(rearRightSeat, ventCapable = ventCapable)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }

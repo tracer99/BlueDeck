@@ -141,6 +141,7 @@ fun BlueAndroidNavHost(
 
         composable(Screen.SeatPresets.route) {
             SeatClimatePresetsScreen(
+                vehicleViewModel = vehicleViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

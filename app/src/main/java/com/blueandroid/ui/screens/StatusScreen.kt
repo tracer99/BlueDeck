@@ -23,6 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.blueandroid.ui.components.ControlSection
 import com.blueandroid.data.models.*
+import com.blueandroid.data.models.heatSupportState
+import com.blueandroid.data.models.seatConfigFor
+import com.blueandroid.data.models.toSupportState
+import com.blueandroid.data.models.ventSupportState
+import com.blueandroid.data.models.SupportState
 import com.blueandroid.ui.theme.*
 import com.blueandroid.viewmodel.VehicleViewModel
 import java.time.Instant
@@ -619,16 +624,6 @@ private fun SeatCapabilityMap(seatConfigs: List<SeatConfig>) {
 }
 
 
-private fun List<SeatConfig>.seatConfigFor(vararg ids: String): SeatConfig? {
-    val normalized = ids.map { it.normalizeSeatId() }.toSet()
-    return firstOrNull { it.seatLocationId.normalizeSeatId() in normalized }
-}
-
-private fun String.normalizeSeatId(): String = trim()
-    .uppercase()
-    .replace('-', '_')
-    .replace(' ', '_')
-
 @Composable
 private fun SeatCapabilityTile(
     label: String,
@@ -637,7 +632,7 @@ private fun SeatCapabilityTile(
 ) {
     val heatState = seatConfig.heatSupportState()
     val ventState = seatConfig.ventSupportState()
-    val anySupported = heatState == SeatSupportState.SUPPORTED || ventState == SeatSupportState.SUPPORTED
+    val anySupported = heatState == SupportState.SUPPORTED || ventState == SupportState.SUPPORTED
     val tileAccent = MaterialTheme.colorScheme.primary
 
     Surface(
@@ -694,28 +689,28 @@ private fun CapabilityPill(
     supportedLabel: String,
     unsupportedLabel: String,
     unknownLabel: String,
-    state: SeatSupportState,
+    state: SupportState,
     supportedColor: Color,
     icon: ImageVector
 ) {
     val tint = when (state) {
-        SeatSupportState.SUPPORTED -> supportedColor
-        SeatSupportState.NOT_SUPPORTED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
-        SeatSupportState.NOT_REPORTED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
+        SupportState.SUPPORTED -> supportedColor
+        SupportState.NOT_SUPPORTED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
+        SupportState.NOT_REPORTED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
     }
     val label = when (state) {
-        SeatSupportState.SUPPORTED -> supportedLabel
-        SeatSupportState.NOT_SUPPORTED -> unsupportedLabel
-        SeatSupportState.NOT_REPORTED -> unknownLabel
+        SupportState.SUPPORTED -> supportedLabel
+        SupportState.NOT_SUPPORTED -> unsupportedLabel
+        SupportState.NOT_REPORTED -> unknownLabel
     }
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = tint.copy(alpha = when (state) {
-            SeatSupportState.SUPPORTED -> 0.18f
-            SeatSupportState.NOT_SUPPORTED -> 0.07f
-            SeatSupportState.NOT_REPORTED -> 0.05f
+            SupportState.SUPPORTED -> 0.18f
+            SupportState.NOT_SUPPORTED -> 0.07f
+            SupportState.NOT_REPORTED -> 0.05f
         }),
-        border = BorderStroke(1.dp, tint.copy(alpha = if (state == SeatSupportState.SUPPORTED) 0.52f else 0.16f))
+        border = BorderStroke(1.dp, tint.copy(alpha = if (state == SupportState.SUPPORTED) 0.52f else 0.16f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
@@ -755,43 +750,7 @@ private fun StackedStatusRow(label: String, value: String) {
 }
 
 
-private enum class SeatSupportState { SUPPORTED, NOT_SUPPORTED, NOT_REPORTED }
-
-private fun SeatConfig?.heatSupportState(): SeatSupportState {
-    if (this == null) return SeatSupportState.NOT_REPORTED
-    val explicit = heatingCapable.supportFlagState()
-    if (explicit != SeatSupportState.NOT_REPORTED) return explicit
-    val levels = supportedLevelCodes()
-    return when {
-        levels.any { it in 6..8 } -> SeatSupportState.SUPPORTED
-        levels.isNotEmpty() -> SeatSupportState.NOT_SUPPORTED
-        else -> SeatSupportState.NOT_REPORTED
-    }
-}
-
-private fun SeatConfig?.ventSupportState(): SeatSupportState {
-    if (this == null) return SeatSupportState.NOT_REPORTED
-    val explicit = ventCapable.supportFlagState()
-    if (explicit != SeatSupportState.NOT_REPORTED) return explicit
-    val levels = supportedLevelCodes()
-    return when {
-        levels.any { it in 3..5 } -> SeatSupportState.SUPPORTED
-        levels.isNotEmpty() -> SeatSupportState.NOT_SUPPORTED
-        else -> SeatSupportState.NOT_REPORTED
-    }
-}
-
-private fun SeatConfig.supportedLevelCodes(): List<Int> = supportedLevels
-    .split(',', '|', ';', ' ')
-    .mapNotNull { it.trim().toIntOrNull() }
-
-private fun String?.supportFlagState(): SeatSupportState = when (this?.trim()?.uppercase()) {
-    "Y", "YES", "TRUE", "1", "2", "SUPPORTED", "CAPABLE", "ENABLED", "AVAILABLE" -> SeatSupportState.SUPPORTED
-    "N", "NO", "FALSE", "0", "NOT_SUPPORTED", "UNSUPPORTED", "NOT SUPPORTED", "DISABLED", "UNAVAILABLE" -> SeatSupportState.NOT_SUPPORTED
-    else -> SeatSupportState.NOT_REPORTED
-}
-
-private fun String?.isSupportedFlag(): Boolean = supportFlagState() == SeatSupportState.SUPPORTED
+private fun String?.isSupportedFlag(): Boolean = toSupportState() == SupportState.SUPPORTED
 
 private fun yesNo(raw: String): String = when (raw.trim().uppercase()) {
     "Y", "YES", "TRUE", "1" -> "Supported"

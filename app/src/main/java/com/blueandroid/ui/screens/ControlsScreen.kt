@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.blueandroid.data.models.resolveCapabilities
 import com.blueandroid.ui.components.ControlSection
 import com.blueandroid.ui.components.ToggleControlRow
 import com.blueandroid.ui.theme.*
@@ -28,6 +29,7 @@ fun ControlsScreen(
     val status by vehicleViewModel.vehicleStatus.collectAsStateWithLifecycle()
     val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
     val isEV = vehicle?.isEV == true
+    val caps = vehicle?.resolveCapabilities()
     val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     var pendingConfirmation by remember { mutableStateOf<ControlsConfirmationRequest?>(null) }
 
@@ -193,12 +195,14 @@ fun ControlsScreen(
                         onChecked = { defrost = it }
                     )
 
-                    ToggleControlRow(
-                        label = "Heated Steering Wheel",
-                        icon = Icons.Filled.Straight,
-                        checked = heatedSteering,
-                        onChecked = { heatedSteering = it }
-                    )
+                    if (caps?.showHeatedSteering != false) {
+                        ToggleControlRow(
+                            label = "Heated Steering Wheel",
+                            icon = Icons.Filled.Straight,
+                            checked = heatedSteering,
+                            onChecked = { heatedSteering = it }
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

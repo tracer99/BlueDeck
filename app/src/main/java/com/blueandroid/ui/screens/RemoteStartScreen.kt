@@ -19,6 +19,7 @@ import com.blueandroid.ui.components.CommandStatusBanner
 import com.blueandroid.ui.components.ControlSection
 import com.blueandroid.ui.components.ToggleControlRow
 import com.blueandroid.ui.components.SeatHeatSelector
+import com.blueandroid.data.models.resolveCapabilities
 import com.blueandroid.ui.theme.*
 import com.blueandroid.viewmodel.RemoteStartSettings
 import com.blueandroid.viewmodel.VehicleViewModel
@@ -35,6 +36,7 @@ fun RemoteStartScreen(
     val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
     val status by vehicleViewModel.vehicleStatus.collectAsStateWithLifecycle()
     val isEV = vehicle?.isEV == true
+    val caps = vehicle?.resolveCapabilities()
     val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     var pendingLockPrompt by remember { mutableStateOf(false) }
 
@@ -122,32 +124,47 @@ fun RemoteStartScreen(
                 }
             }
 
-            // ─── Heating ──────────────────────────────────────────────────────
-            ControlSection(title = "Seat & Wheel Climate") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToggleControlRow("Heated Steering Wheel", Icons.Filled.Straight, localSettings.heatedSteering) {
-                        localSettings = localSettings.copy(heatedSteering = it)
+            if (caps?.showSeatClimateControls == true) {
+                ControlSection(title = "Seat & Wheel Climate") {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (caps.showHeatedSteering) {
+                            ToggleControlRow("Heated Steering Wheel", Icons.Filled.Straight, localSettings.heatedSteering) {
+                                localSettings = localSettings.copy(heatedSteering = it)
+                            }
+                        }
+                        if (caps.driver.showHeat || caps.driver.showVent) {
+                            SeatHeatSelector(
+                                label = "Driver Seat",
+                                value = localSettings.driverSeatHeat,
+                                onValueChange = { localSettings = localSettings.copy(driverSeatHeat = it) },
+                                ventCapable = caps.driver.ventCapableForSelector
+                            )
+                        }
+                        if (caps.passenger.showHeat || caps.passenger.showVent) {
+                            SeatHeatSelector(
+                                label = "Passenger Seat",
+                                value = localSettings.passengerSeatHeat,
+                                onValueChange = { localSettings = localSettings.copy(passengerSeatHeat = it) },
+                                ventCapable = caps.passenger.ventCapableForSelector
+                            )
+                        }
+                        if (caps.rearLeft.showHeat || caps.rearLeft.showVent) {
+                            SeatHeatSelector(
+                                label = "Rear Left Seat",
+                                value = localSettings.rearLeftSeatHeat,
+                                onValueChange = { localSettings = localSettings.copy(rearLeftSeatHeat = it) },
+                                ventCapable = caps.rearLeft.ventCapableForSelector
+                            )
+                        }
+                        if (caps.rearRight.showHeat || caps.rearRight.showVent) {
+                            SeatHeatSelector(
+                                label = "Rear Right Seat",
+                                value = localSettings.rearRightSeatHeat,
+                                onValueChange = { localSettings = localSettings.copy(rearRightSeatHeat = it) },
+                                ventCapable = caps.rearRight.ventCapableForSelector
+                            )
+                        }
                     }
-                    SeatHeatSelector(
-                        label = "Driver Seat",
-                        value = localSettings.driverSeatHeat,
-                        onValueChange = { localSettings = localSettings.copy(driverSeatHeat = it) }
-                    )
-                    SeatHeatSelector(
-                        label = "Passenger Seat",
-                        value = localSettings.passengerSeatHeat,
-                        onValueChange = { localSettings = localSettings.copy(passengerSeatHeat = it) }
-                    )
-                    SeatHeatSelector(
-                        label = "Rear Left Seat",
-                        value = localSettings.rearLeftSeatHeat,
-                        onValueChange = { localSettings = localSettings.copy(rearLeftSeatHeat = it) }
-                    )
-                    SeatHeatSelector(
-                        label = "Rear Right Seat",
-                        value = localSettings.rearRightSeatHeat,
-                        onValueChange = { localSettings = localSettings.copy(rearRightSeatHeat = it) }
-                    )
                 }
             }
 
