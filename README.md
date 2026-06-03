@@ -4,7 +4,7 @@ An unofficial, open-source Android app for controlling Hyundai and Kia vehicles 
 
 ## Fork attribution
 
-BlueAndroid is a fork of the open-source **BlueBridge for Android** project, originally created by **[Nelwyn99](https://github.com/Nelwyn99)**. This fork is maintained separately at [tracer99/BlueAndroid](https://github.com/tracer99/BlueAndroid) to evolve features, UX, and release cadence in a different direction. It is not affiliated with the upstream BlueBridge project, Hyundai Motor Company, or Kia Corporation. See [NOTICE](NOTICE) and [LICENSE](LICENSE).
+BlueAndroid is a fork of the open-source **BlueBridge for Android** project, originally created by **[Nelwyn99](https://github.com/Nelwyn99)**. This fork is maintained separately at [tracer99/BlueAndroid](https://github.com/tracer99/BlueAndroid) to evolve features, UX, and release cadence in a different direction. It is not affiliated with the upstream BlueBridge project, Hyundai Motor Company, or Kia Corporation. See [NOTICE](NOTICE), [LICENSE](LICENSE), and [CHANGELOG](CHANGELOG.md) for release history.
 
 ## Features
 

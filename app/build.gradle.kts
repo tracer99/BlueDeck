@@ -15,8 +15,8 @@ android {
         applicationId = "com.blueandroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.3.10"
+        versionCode = 24
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
