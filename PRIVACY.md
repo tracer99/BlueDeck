@@ -1,10 +1,10 @@
 # Privacy
 
-BlueBridge is designed to run locally on your Android device and does not operate a BlueBridge-owned backend service.
+BlueAndroid is designed to run locally on your Android device and does not operate a BlueAndroid-owned backend service.
 
 ## Data stored on device
 
-BlueBridge may store the following data locally so the app and widgets can function:
+BlueAndroid may store the following data locally so the app and widgets can function:
 
 - Hyundai Bluelink, UVO, or Kia Connect session information
 - Selected region and brand
@@ -16,9 +16,9 @@ Sensitive account/session data should remain in Android app-private storage. Do 
 
 ## Network communication
 
-BlueBridge communicates with Hyundai/Kia connected-car endpoints required for app functionality. Commands such as lock, unlock, climate, charging, horn/lights, and status refresh are sent to those connected-car services when you request them.
+BlueAndroid communicates with Hyundai/Kia connected-car endpoints required for app functionality. Commands such as lock, unlock, climate, charging, horn/lights, and status refresh are sent to those connected-car services when you request them.
 
-BlueBridge does not intentionally sell user data, transmit account credentials to a BlueBridge-owned analytics service, or use a BlueBridge-operated tracking backend.
+BlueAndroid does not intentionally sell user data, transmit account credentials to a BlueAndroid-owned analytics service, or use a BlueAndroid-operated tracking backend.
 
 ## Logs and troubleshooting
 
@@ -32,4 +32,4 @@ When reporting issues, remove or obscure the following before sharing logs or sc
 
 ## Third-party services
 
-Hyundai, Kia, Google, Android, and any services integrated through the Android platform may process data according to their own terms and privacy policies. BlueBridge is not affiliated with Hyundai Motor Company or Kia Corporation.
+Hyundai, Kia, Google, Android, and any services integrated through the Android platform may process data according to their own terms and privacy policies. BlueAndroid is not affiliated with Hyundai Motor Company or Kia Corporation.

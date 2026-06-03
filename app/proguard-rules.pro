@@ -1,8 +1,8 @@
 # Add project specific ProGuard rules here.
 
 # Keep Retrofit models
--keepclassmembers class com.bluebridge.android.data.models.** { *; }
--keep class com.bluebridge.android.data.models.** { *; }
+-keepclassmembers class com.blueandroid.data.models.** { *; }
+-keep class com.blueandroid.data.models.** { *; }
 
 # Retrofit
 -keepattributes Signature

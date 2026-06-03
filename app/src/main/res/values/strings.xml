@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">BlueBridge</string>
+    <string name="app_name">BlueAndroid</string>
     <string name="lock">Lock</string>
     <string name="unlock">Unlock</string>
     <string name="remote_start">Remote Start</string>
@@ -22,16 +22,16 @@
     <string name="charging">Charging</string>
     <string name="not_charging">Not Charging</string>
     <!-- Widget strings -->
-    <string name="widget_title">BlueBridge</string>
+    <string name="widget_title">BlueAndroid</string>
     <string name="widget_description">Vehicle status &amp; quick controls</string>
-    <string name="widget_full_label">BlueBridge Full</string>
-    <string name="widget_battery_label">BlueBridge Battery</string>
-    <string name="widget_battery_wide_label">BlueBridge Battery Wide</string>
-    <string name="widget_lock_label">BlueBridge Lock</string>
-    <string name="widget_unlock_label">BlueBridge Unlock</string>
-    <string name="widget_climate_label">BlueBridge Climate</string>
-    <string name="widget_refresh_label">BlueBridge Refresh</string>
-    <string name="widget_controls_label">BlueBridge Lock Controls</string>
+    <string name="widget_full_label">BlueAndroid Full</string>
+    <string name="widget_battery_label">BlueAndroid Battery</string>
+    <string name="widget_battery_wide_label">BlueAndroid Battery Wide</string>
+    <string name="widget_lock_label">BlueAndroid Lock</string>
+    <string name="widget_unlock_label">BlueAndroid Unlock</string>
+    <string name="widget_climate_label">BlueAndroid Climate</string>
+    <string name="widget_refresh_label">BlueAndroid Refresh</string>
+    <string name="widget_controls_label">BlueAndroid Lock Controls</string>
     <string name="widget_battery_description">Compact vehicle battery and range widget</string>
     <string name="widget_battery_wide_description">Wide vehicle battery, range, lock status, and refresh widget</string>
     <string name="widget_lock_description">One-tap vehicle lock widget</string>

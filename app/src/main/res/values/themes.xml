@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BlueBridge" parent="android:Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:statusBarColor">#0F0F1E</item>
-        <item name="android:navigationBarColor">#0F0F1E</item>
+    <style name="Theme.BlueAndroid" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <style name="Theme.BlueBridge.SplashScreen" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0F0F1E</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/bluebridge_splash_icon</item>
-        <item name="postSplashScreenTheme">@style/Theme.BlueBridge</item>
+    <style name="Theme.BlueAndroid.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/blueandroid_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/blueandroid_splash_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.BlueAndroid</item>
     </style>
 </resources>

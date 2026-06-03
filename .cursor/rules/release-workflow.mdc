@@ -1,0 +1,58 @@
+---
+description: Git branching, version bumps, and changelog updates for every change
+alwaysApply: true
+---
+
+# Release workflow
+
+Apply these steps for every **feature**, **plan**, or **bug fix** — not only at release time.
+
+## Git branches
+
+1. **Start on a new branch** — never implement features, plans, or fixes directly on `main` (or the default integration branch).
+2. Create the branch **before** writing code:
+   - `feature/<short-description>` — new capability or UX
+   - `fix/<short-description>` — bug fixes
+   - `plan/<short-description>` — refactors or multi-step work without a user-facing feature yet
+3. Open PRs from that branch; merge only after review/CI as usual.
+
+## Version and changelog (required on every branch)
+
+Update **both** files in the same change set as the functional work:
+
+| File | What to update |
+|------|----------------|
+| `app/build.gradle.kts` | `versionName` and `versionCode` |
+| `CHANGELOG.md` | New `## [x.y.z] - YYYY-MM-DD` section at the top (below the intro) |
+
+### `versionName` rules (from current `versionName` on the branch base)
+
+| Change type | Bump | Example |
+|-------------|------|---------|
+| Bug fix | **+0.0.1** (patch) | `1.4.0` → `1.4.1` |
+| Feature | **+0.1.0** (minor) | `1.4.0` → `1.5.0` |
+| Major | **+1.0.0** only when the user **explicitly** requests a major release | `1.5.0` → `2.0.0` |
+
+- Use three-part semver: `MAJOR.MINOR.PATCH`.
+- If a branch mixes a feature and fixes, use the **largest** applicable bump (feature wins over patch).
+- Do **not** bump major/minor for fixes-only work.
+
+### `versionCode`
+
+- Always increment `versionCode` by **1** on every release-worthy change (required for Play Store uploads).
+- Never reuse or decrease `versionCode`.
+
+### Changelog entry
+
+- Add the topmost section for the new version with today's date (`YYYY-MM-DD`).
+- Group items under [Keep a Changelog](https://keepachangelog.com/) headings: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`.
+- Describe **user-visible** or **maintainer-relevant** changes; keep bullets concise.
+- Bug-fix branches: put items under `### Fixed`.
+- Feature branches: put items under `### Added` / `### Changed` as appropriate.
+
+### Checklist before finishing
+
+- [ ] On a dedicated branch (`feature/`, `fix/`, or `plan/`)
+- [ ] `versionName` bumped per table above
+- [ ] `versionCode` incremented by 1
+- [ ] `CHANGELOG.md` top section matches the new version
