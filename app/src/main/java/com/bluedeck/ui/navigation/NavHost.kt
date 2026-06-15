@@ -23,6 +23,7 @@ sealed class Screen(val route: String) {
     object SurroundView : Screen("surround_view")
     object SeatPresets : Screen("seat_presets")
     object DigitalKey : Screen("digital_key")
+    object ObdDiagnostics : Screen("obd_diagnostics")
 }
 
 @Composable
@@ -62,6 +63,7 @@ fun BlueDeckNavHost(
                 onNavigateToSurroundView = { navController.navigate(Screen.SurroundView.route) },
                 onNavigateToSeatPresets = { navController.navigate(Screen.SeatPresets.route) },
                 onNavigateToDigitalKey = { navController.navigate(Screen.DigitalKey.route) },
+                onNavigateToObd = { navController.navigate(Screen.ObdDiagnostics.route) },
                 onLogout = {
                     authViewModel.logout()
                     navController.navigate(Screen.Login.route) {
@@ -88,6 +90,7 @@ fun BlueDeckNavHost(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToObd = { navController.navigate(Screen.ObdDiagnostics.route) },
                 onLogout = {
                     authViewModel.logout()
                     navController.navigate(Screen.Login.route) {
@@ -153,5 +156,11 @@ fun BlueDeckNavHost(
             )
         }
 
-}
+        composable(Screen.ObdDiagnostics.route) {
+            ObdDiagnosticsScreen(
+                vehicleViewModel = vehicleViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+    }
 }

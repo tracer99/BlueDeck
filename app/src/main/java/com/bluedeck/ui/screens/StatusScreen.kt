@@ -20,7 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluedeck.data.obd.ObdConnectionState
 import com.bluedeck.ui.components.ControlSection
 import com.bluedeck.data.models.*
 import com.bluedeck.data.models.heatSupportState
@@ -29,6 +31,7 @@ import com.bluedeck.data.models.toSupportState
 import com.bluedeck.data.models.ventSupportState
 import com.bluedeck.data.models.SupportState
 import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.ObdViewModel
 import com.bluedeck.viewmodel.VehicleViewModel
 import java.time.Instant
 import java.time.LocalDateTime
@@ -44,9 +47,12 @@ private val SeatVentBlue = Color(0xFF03A9F4)
 @Composable
 fun StatusScreen(
     vehicleViewModel: VehicleViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    obdViewModel: ObdViewModel = hiltViewModel()
 ) {
     val status by vehicleViewModel.vehicleStatus.collectAsStateWithLifecycle()
+    val obdConnection by obdViewModel.connectionState.collectAsStateWithLifecycle()
+    val obdSnapshot by obdViewModel.latestSnapshot.collectAsStateWithLifecycle()
     val selectedVehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
     val commandState by vehicleViewModel.commandState.collectAsStateWithLifecycle()
     val statusError by vehicleViewModel.statusError.collectAsStateWithLifecycle()
@@ -253,6 +259,23 @@ fun StatusScreen(
                 // ─── Additional Telemetry / Diagnostics ─────────────────────────
                 ControlSection(title = "Vehicle Telemetry") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (obdConnection == ObdConnectionState.LOGGING || obdConnection == ObdConnectionState.CONNECTED) {
+                            AssistChip(
+                                onClick = {},
+                                enabled = false,
+                                label = { Text("OBD live") },
+                                leadingIcon = { Icon(Icons.Filled.Sensors, null, Modifier.size(18.dp)) }
+                            )
+                            obdSnapshot.auxVoltageV?.let { v ->
+                                StatusRow(Icons.Filled.BatteryChargingFull, "12V aux (OBD)",
+                                    String.format(Locale.US, "%.1f V", v), MaterialTheme.colorScheme.primary)
+                            }
+                            obdSnapshot.tractionSohPercent?.let { soh ->
+                                StatusRow(Icons.Filled.HealthAndSafety, "Traction SOH (OBD)",
+                                    String.format(Locale.US, "%.1f%%", soh), MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
                         s.battery?.let { battery ->
                             StatusRow(Icons.Filled.BatteryFull, "12V Battery SoC",
                                 "${battery.batteryLevel}%", MaterialTheme.colorScheme.onSurface)
