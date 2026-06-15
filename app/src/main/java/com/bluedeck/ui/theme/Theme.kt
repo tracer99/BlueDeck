@@ -1,4 +1,4 @@
-package com.blueandroid.ui.theme
+package com.bluedeck.ui.theme
 
 import android.app.Activity
 import android.os.Build
@@ -32,7 +32,7 @@ val WarningAmber = Color(0xFFED6C02)
 val ErrorRed = Color(0xFFC62828)
 val ChargingGreen = Color(0xFF00897B)
 
-data class BlueAndroidDynamicColors(
+data class BlueDeckDynamicColors(
     val success: Color = SuccessGreen,
     val warning: Color = WarningAmber,
     val error: Color = ErrorRed,
@@ -41,7 +41,7 @@ data class BlueAndroidDynamicColors(
     val dashboardCardBlend: Color = Color(0xFF0B1B48)
 )
 
-val LocalBlueAndroidDynamicColors = staticCompositionLocalOf { BlueAndroidDynamicColors() }
+val LocalBlueDeckDynamicColors = staticCompositionLocalOf { BlueDeckDynamicColors() }
 
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF002C5F),
@@ -114,7 +114,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun BlueAndroidTheme(
+fun BlueDeckTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     useDynamicColor: Boolean = false,
     content: @Composable () -> Unit
@@ -134,7 +134,7 @@ fun BlueAndroidTheme(
         else -> LightColorScheme
     }
 
-    val dynamicColors = BlueAndroidDynamicColors(
+    val dynamicColors = BlueDeckDynamicColors(
         commandBanner = if (darkTheme) Color(0xFF111827) else Color(0xFFE2E8F0),
         dashboardCardBlend = if (darkTheme) Color(0xFF0B1B48) else Color(0xFFD0E4FF)
     )
@@ -149,10 +149,10 @@ fun BlueAndroidTheme(
         }
     }
 
-    CompositionLocalProvider(LocalBlueAndroidDynamicColors provides dynamicColors) {
+    CompositionLocalProvider(LocalBlueDeckDynamicColors provides dynamicColors) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = BlueAndroidTypography,
+            typography = BlueDeckTypography,
             content = content
         )
     }

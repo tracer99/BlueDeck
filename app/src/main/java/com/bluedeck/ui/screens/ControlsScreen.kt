@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,11 +14,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.data.models.resolveCapabilities
-import com.blueandroid.ui.components.ControlSection
-import com.blueandroid.ui.components.ToggleControlRow
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.data.models.resolveCapabilities
+import com.bluedeck.ui.components.ControlSection
+import com.bluedeck.ui.components.ToggleControlRow
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.VehicleViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

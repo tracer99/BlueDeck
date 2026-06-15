@@ -1,9 +1,9 @@
-package com.blueandroid.di
+package com.bluedeck.di
 
 import android.content.Context
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.SecureCredentialsManager
-import com.blueandroid.data.repository.VehicleRepository
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.SecureCredentialsManager
+import com.bluedeck.data.repository.VehicleRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

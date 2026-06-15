@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -31,14 +31,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.data.models.DriverProfile
-import com.blueandroid.data.models.VehicleLocation
-import com.blueandroid.ui.components.CommandStatusBanner
-import com.blueandroid.ui.components.ControlSection
-import com.blueandroid.ui.components.ToggleControlRow
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.CommandStatus
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.data.models.DriverProfile
+import com.bluedeck.data.models.VehicleLocation
+import com.bluedeck.ui.components.CommandStatusBanner
+import com.bluedeck.ui.components.ControlSection
+import com.bluedeck.ui.components.ToggleControlRow
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.CommandStatus
+import com.bluedeck.viewmodel.VehicleViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

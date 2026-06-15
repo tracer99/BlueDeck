@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -21,15 +21,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.ui.components.ControlSection
-import com.blueandroid.data.models.*
-import com.blueandroid.data.models.heatSupportState
-import com.blueandroid.data.models.seatConfigFor
-import com.blueandroid.data.models.toSupportState
-import com.blueandroid.data.models.ventSupportState
-import com.blueandroid.data.models.SupportState
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.ui.components.ControlSection
+import com.bluedeck.data.models.*
+import com.bluedeck.data.models.heatSupportState
+import com.bluedeck.data.models.seatConfigFor
+import com.bluedeck.data.models.toSupportState
+import com.bluedeck.data.models.ventSupportState
+import com.bluedeck.data.models.SupportState
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.VehicleViewModel
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -549,7 +549,7 @@ private fun resolveDisplayZone(timeZoneMode: String): ZoneId = when (timeZoneMod
     else -> ZoneId.systemDefault()
 }
 
-private fun formatScheduleTime(time: com.blueandroid.data.models.ScheduleTime?): String {
+private fun formatScheduleTime(time: com.bluedeck.data.models.ScheduleTime?): String {
     val raw = time?.time.orEmpty().filter { it.isDigit() }
     if (raw.isBlank() || raw == "0000") return "Not set"
     val padded = raw.padStart(4, '0').takeLast(4)

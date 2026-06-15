@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -60,10 +60,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.data.models.AdditionalVehicleDetails
-import com.blueandroid.ui.theme.SuccessGreen
-import com.blueandroid.ui.theme.WarningAmber
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.data.models.AdditionalVehicleDetails
+import com.bluedeck.ui.theme.SuccessGreen
+import com.bluedeck.ui.theme.WarningAmber
+import com.bluedeck.viewmodel.VehicleViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -160,7 +160,7 @@ private fun DigitalKeyHeroCard(details: AdditionalVehicleDetails?) {
                 lineHeight = 28.sp
             )
             Text(
-                text = "BlueAndroid can now act as a Digital Key launchpad: it checks phone readiness, shows the vehicle-reported enrollment flags, opens the official Hyundai/Wallet apps, and gives you a copyable setup checklist.",
+                text = "BlueDeck can now act as a Digital Key launchpad: it checks phone readiness, shows the vehicle-reported enrollment flags, opens the official Hyundai/Wallet apps, and gives you a copyable setup checklist.",
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f),
                 lineHeight = 20.sp
             )
@@ -323,7 +323,7 @@ private fun SecurityBoundaryCard() {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Security note", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                 Text(
-                    "BlueAndroid cannot provision, emulate, clone, intercept, export, or store a vehicle key. Hyundai/Wallet owns the actual cryptographic key enrollment and secure-element storage.",
+                    "BlueDeck cannot provision, emulate, clone, intercept, export, or store a vehicle key. Hyundai/Wallet owns the actual cryptographic key enrollment and secure-element storage.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                     lineHeight = 19.sp
                 )

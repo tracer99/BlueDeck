@@ -1,4 +1,4 @@
-package com.blueandroid.data.repository
+package com.bluedeck.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -92,8 +92,8 @@ class SecureCredentialsManager @Inject constructor(
     }
 
     private companion object {
-        const val PREFS_NAME = "blueandroid_secure_credentials"
-        const val KEY_ALIAS = "blueandroid_saved_login_key"
+        const val PREFS_NAME = "bluedeck_secure_credentials"
+        const val KEY_ALIAS = "bluedeck_saved_login_key"
         const val KEY_IV = "saved_login_iv"
         const val KEY_CIPHERTEXT = "saved_login_ciphertext"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"

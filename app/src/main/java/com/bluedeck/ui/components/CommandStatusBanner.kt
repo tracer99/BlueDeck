@@ -1,4 +1,4 @@
-package com.blueandroid.ui.components
+package com.bluedeck.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,9 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.CommandState
-import com.blueandroid.viewmodel.CommandStatus
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.CommandState
+import com.bluedeck.viewmodel.CommandStatus
 
 @Composable
 fun CommandStatusBanner(
@@ -24,7 +24,7 @@ fun CommandStatusBanner(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
-    val dynamicColors = LocalBlueAndroidDynamicColors.current
+    val dynamicColors = LocalBlueDeckDynamicColors.current
     val (bgColor, icon, iconTint, showSpinner) = when (commandState.status) {
         CommandStatus.LOADING -> Quad(
             dynamicColors.commandBanner,

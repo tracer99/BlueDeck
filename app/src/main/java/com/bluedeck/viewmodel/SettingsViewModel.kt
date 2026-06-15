@@ -1,9 +1,9 @@
-package com.blueandroid.viewmodel
+package com.bluedeck.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.SecureCredentialsManager
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.SecureCredentialsManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn

@@ -1,4 +1,4 @@
-package com.blueandroid.ui.theme
+package com.bluedeck.ui.theme
 
 import kotlin.math.roundToInt
 

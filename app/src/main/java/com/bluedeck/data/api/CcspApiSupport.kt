@@ -1,4 +1,4 @@
-package com.blueandroid.data.api
+package com.bluedeck.data.api
 
 import android.util.Base64
 import okhttp3.Cookie

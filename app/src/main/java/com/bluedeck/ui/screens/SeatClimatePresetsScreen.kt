@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -25,9 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.data.models.VehicleFeatureCapabilities
-import com.blueandroid.data.models.resolveCapabilities
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.data.models.VehicleFeatureCapabilities
+import com.bluedeck.data.models.resolveCapabilities
+import com.bluedeck.viewmodel.VehicleViewModel
 
 private val SeatHeatOrange = Color(0xFFFF9800)
 private val SeatVentBlue = Color(0xFF03A9F4)

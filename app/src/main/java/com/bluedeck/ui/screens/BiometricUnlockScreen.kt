@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import android.app.Activity
 import android.content.Context
@@ -93,11 +93,11 @@ fun BiometricUnlockScreen(
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(if (isReauthenticating) "Sign back in" else "Unlock BlueAndroid")
+            .setTitle(if (isReauthenticating) "Sign back in" else "Unlock BlueDeck")
             .setSubtitle("Use fingerprint or face unlock")
             .setDescription(
                 if (isReauthenticating) {
-                    "Your Hyundai session expired. BlueAndroid will sign back in with your saved encrypted credentials."
+                    "Your Hyundai session expired. BlueDeck will sign back in with your saved encrypted credentials."
                 } else {
                     "Biometric lock is enabled for this app."
                 }
@@ -137,7 +137,7 @@ fun BiometricUnlockScreen(
             )
             Spacer(Modifier.height(20.dp))
             Text(
-                text = if (isReauthenticating) "Sign back in" else "Unlock BlueAndroid",
+                text = if (isReauthenticating) "Sign back in" else "Unlock BlueDeck",
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold,

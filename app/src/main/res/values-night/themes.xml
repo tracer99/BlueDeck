@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BlueAndroid" parent="@android:style/Theme.Material.NoActionBar">
+    <style name="Theme.BlueDeck" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <style name="Theme.BlueAndroid.SplashScreen" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/blueandroid_splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/blueandroid_splash_icon</item>
-        <item name="postSplashScreenTheme">@style/Theme.BlueAndroid</item>
+    <style name="Theme.BlueDeck.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/bluedeck_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/bluedeck_splash_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.BlueDeck</item>
     </style>
 </resources>

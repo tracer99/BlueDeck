@@ -1,7 +1,7 @@
-package com.blueandroid.data.api
+package com.bluedeck.data.api
 
 import com.google.gson.JsonObject
-import com.blueandroid.data.models.*
+import com.bluedeck.data.models.*
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*

@@ -1,7 +1,7 @@
-package com.blueandroid.data.repository
+package com.bluedeck.data.repository
 
-import com.blueandroid.data.models.CommandHistoryEntry
-import com.blueandroid.data.models.WidgetVehicleSnapshot
+import com.bluedeck.data.models.CommandHistoryEntry
+import com.bluedeck.data.models.WidgetVehicleSnapshot
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
@@ -19,7 +19,7 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "blueandroid_prefs")
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "bluedeck_prefs")
 
 @Singleton
 class PreferencesManager @Inject constructor(
@@ -232,7 +232,7 @@ class PreferencesManager @Inject constructor(
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs ->
             WidgetVehicleSnapshot(
-                vehicleName = prefs[WIDGET_VEHICLE_NAME] ?: "BlueAndroid",
+                vehicleName = prefs[WIDGET_VEHICLE_NAME] ?: "BlueDeck",
                 vehicleVin = prefs[WIDGET_VEHICLE_VIN].orEmpty(),
                 vehicleId = prefs[WIDGET_VEHICLE_ID].orEmpty(),
                 registrationId = prefs[WIDGET_REGISTRATION_ID].orEmpty(),
@@ -496,7 +496,7 @@ class PreferencesManager @Inject constructor(
 
     suspend fun cacheWidgetSnapshot(snapshot: WidgetVehicleSnapshot) {
         dataStore.edit { prefs ->
-            prefs[WIDGET_VEHICLE_NAME] = snapshot.vehicleName.ifBlank { "BlueAndroid" }
+            prefs[WIDGET_VEHICLE_NAME] = snapshot.vehicleName.ifBlank { "BlueDeck" }
             if (snapshot.vehicleVin.isNotBlank()) prefs[WIDGET_VEHICLE_VIN] = snapshot.vehicleVin
             if (snapshot.vehicleId.isNotBlank()) prefs[WIDGET_VEHICLE_ID] = snapshot.vehicleId
             if (snapshot.registrationId.isNotBlank()) prefs[WIDGET_REGISTRATION_ID] = snapshot.registrationId

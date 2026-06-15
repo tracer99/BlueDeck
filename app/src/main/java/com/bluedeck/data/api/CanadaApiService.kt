@@ -1,4 +1,4 @@
-package com.blueandroid.data.api
+package com.bluedeck.data.api
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser

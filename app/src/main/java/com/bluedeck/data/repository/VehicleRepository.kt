@@ -1,16 +1,16 @@
-package com.blueandroid.data.repository
+package com.bluedeck.data.repository
 
-import com.blueandroid.data.api.ApiClient
-import com.blueandroid.data.api.AuApiClient
-import com.blueandroid.data.api.CanadaApiClient
-import com.blueandroid.data.api.canadaUnreadableBodyMessage
-import com.blueandroid.data.api.EuApiClient
-import com.blueandroid.data.api.parseCanadaJsonBody
-import com.blueandroid.data.api.readCanadaHttpBody
-import com.blueandroid.data.api.EuIdentityApiClient
-import com.blueandroid.data.api.KiaUsApiClient
-import com.blueandroid.data.api.Region
-import com.blueandroid.data.models.*
+import com.bluedeck.data.api.ApiClient
+import com.bluedeck.data.api.AuApiClient
+import com.bluedeck.data.api.CanadaApiClient
+import com.bluedeck.data.api.canadaUnreadableBodyMessage
+import com.bluedeck.data.api.EuApiClient
+import com.bluedeck.data.api.parseCanadaJsonBody
+import com.bluedeck.data.api.readCanadaHttpBody
+import com.bluedeck.data.api.EuIdentityApiClient
+import com.bluedeck.data.api.KiaUsApiClient
+import com.bluedeck.data.api.Region
+import com.bluedeck.data.models.*
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import com.google.gson.Gson
@@ -614,7 +614,7 @@ class VehicleRepository @Inject constructor(
             }
             if (canadaOtpRequired(json)) {
                 return Result.Error(
-                    "Canada login requires OTP/MFA for this device. Open the official Hyundai/Kia Canada app or web portal once, then try BlueAndroid again. OTP entry is scaffolded in the API layer but not exposed in the login screen yet."
+                    "Canada login requires OTP/MFA for this device. Open the official Hyundai/Kia Canada app or web portal once, then try BlueDeck again. OTP entry is scaffolded in the API layer but not exposed in the login screen yet."
                 )
             }
             if (canadaResponseFailed(json)) {
@@ -1281,9 +1281,9 @@ class VehicleRepository @Inject constructor(
         val api = getAuApiService()
         val stamp = AuApiClient(currentRegion(), preferencesManager.getOrCreateAuDeviceId()).stamp()
         val body = JsonObject().apply {
-            addProperty("pushRegId", com.blueandroid.data.api.newAuPushRegistrationId())
+            addProperty("pushRegId", com.bluedeck.data.api.newAuPushRegistrationId())
             addProperty("pushType", "GCM")
-            addProperty("uuid", com.blueandroid.data.api.newAuUuid())
+            addProperty("uuid", com.bluedeck.data.api.newAuUuid())
         }
         val response = api.registerNotifications(stamp, body)
         val json = response.body()
@@ -2321,10 +2321,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<VehicleLocation> {
-        if (isKiaUsRegion()) return Result.Error("Vehicle location for USA Kia is returned in the status payload but is not mapped into the BlueAndroid location model yet.")
+        if (isKiaUsRegion()) return Result.Error("Vehicle location for USA Kia is returned in the status payload but is not mapped into the BlueDeck location model yet.")
         if (isCanadaRegion()) return Result.Error("Vehicle location for Canada is not mapped yet.")
-        if (isEuropeRegion()) return Result.Error("Vehicle location for Europe is not mapped into the BlueAndroid location model yet.")
-        if (isAustraliaRegion()) return Result.Error("Vehicle location for Australia/NZ is available in the upstream API but is not mapped into the BlueAndroid location model yet.")
+        if (isEuropeRegion()) return Result.Error("Vehicle location for Europe is not mapped into the BlueDeck location model yet.")
+        if (isAustraliaRegion()) return Result.Error("Vehicle location for Australia/NZ is available in the upstream API but is not mapped into the BlueDeck location model yet.")
         return try {
             val token = getToken()
             val username = getUsername()

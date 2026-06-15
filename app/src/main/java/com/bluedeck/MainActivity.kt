@@ -1,4 +1,4 @@
-package com.blueandroid
+package com.bluedeck
 
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -22,25 +22,25 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.blueandroid.ui.screens.BiometricUnlockScreen
-import com.blueandroid.ui.screens.ControlsScreen
-import com.blueandroid.ui.screens.DashboardScreen
-import com.blueandroid.ui.screens.DigitalKeyScreen
-import com.blueandroid.ui.screens.DriverProfilesScreen
-import com.blueandroid.ui.screens.EVChargingScreen
-import com.blueandroid.ui.screens.LocationScreen
-import com.blueandroid.ui.screens.LoginScreen
-import com.blueandroid.ui.screens.RemoteStartScreen
-import com.blueandroid.ui.screens.SeatClimatePresetsScreen
-import com.blueandroid.ui.screens.SettingsScreen
-import com.blueandroid.ui.screens.StatusScreen
-import com.blueandroid.ui.screens.SurroundViewScreen
-import com.blueandroid.ui.screens.ValetModeScreen
-import com.blueandroid.ui.theme.BlueAndroidTheme
-import com.blueandroid.ui.theme.ThemeMode
-import com.blueandroid.viewmodel.AuthViewModel
-import com.blueandroid.viewmodel.SettingsViewModel
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.ui.screens.BiometricUnlockScreen
+import com.bluedeck.ui.screens.ControlsScreen
+import com.bluedeck.ui.screens.DashboardScreen
+import com.bluedeck.ui.screens.DigitalKeyScreen
+import com.bluedeck.ui.screens.DriverProfilesScreen
+import com.bluedeck.ui.screens.EVChargingScreen
+import com.bluedeck.ui.screens.LocationScreen
+import com.bluedeck.ui.screens.LoginScreen
+import com.bluedeck.ui.screens.RemoteStartScreen
+import com.bluedeck.ui.screens.SeatClimatePresetsScreen
+import com.bluedeck.ui.screens.SettingsScreen
+import com.bluedeck.ui.screens.StatusScreen
+import com.bluedeck.ui.screens.SurroundViewScreen
+import com.bluedeck.ui.screens.ValetModeScreen
+import com.bluedeck.ui.theme.BlueDeckTheme
+import com.bluedeck.ui.theme.ThemeMode
+import com.bluedeck.viewmodel.AuthViewModel
+import com.bluedeck.viewmodel.SettingsViewModel
+import com.bluedeck.viewmodel.VehicleViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 private const val BIOMETRIC_REAUTH_GRACE_PERIOD_MS = 5 * 60 * 1000L
@@ -187,7 +187,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            BlueAndroidTheme(themeMode = themeMode, useDynamicColor = useDynamicColor) {
+            BlueDeckTheme(themeMode = themeMode, useDynamicColor = useDynamicColor) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     if (isLoggedIn != null) {
                         NavHost(

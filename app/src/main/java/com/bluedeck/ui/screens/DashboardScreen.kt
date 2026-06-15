@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -44,17 +44,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.R
-import com.blueandroid.data.models.CommandHistoryEntry
-import com.blueandroid.data.models.Vehicle
-import com.blueandroid.data.models.VehicleFeatureCapabilities
-import com.blueandroid.data.models.VehicleStatusData
-import com.blueandroid.data.models.hasFuelTelemetryFor
-import com.blueandroid.data.models.resolveCapabilities
-import com.blueandroid.ui.components.CommandStatusBanner
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.CommandStatus
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.R
+import com.bluedeck.data.models.CommandHistoryEntry
+import com.bluedeck.data.models.Vehicle
+import com.bluedeck.data.models.VehicleFeatureCapabilities
+import com.bluedeck.data.models.VehicleStatusData
+import com.bluedeck.data.models.hasFuelTelemetryFor
+import com.bluedeck.data.models.resolveCapabilities
+import com.bluedeck.ui.components.CommandStatusBanner
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.CommandStatus
+import com.bluedeck.viewmodel.VehicleViewModel
 
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -134,7 +134,7 @@ fun DashboardScreen(
                 title = {
                     Column {
                         Text(
-                            "BlueAndroid",
+                            "BlueDeck",
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground
                         )

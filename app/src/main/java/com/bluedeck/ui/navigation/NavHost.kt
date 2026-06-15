@@ -1,13 +1,13 @@
-package com.blueandroid.ui.navigation
+package com.bluedeck.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.blueandroid.ui.screens.*
-import com.blueandroid.viewmodel.AuthViewModel
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.ui.screens.*
+import com.bluedeck.viewmodel.AuthViewModel
+import com.bluedeck.viewmodel.VehicleViewModel
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
@@ -26,7 +26,7 @@ sealed class Screen(val route: String) {
 }
 
 @Composable
-fun BlueAndroidNavHost(
+fun BlueDeckNavHost(
     startDestination: String,
     authViewModel: AuthViewModel
 ) {

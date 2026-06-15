@@ -1,4 +1,4 @@
-package com.blueandroid.ui.components
+package com.bluedeck.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

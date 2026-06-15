@@ -1,13 +1,13 @@
-package com.blueandroid.viewmodel
+package com.bluedeck.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.blueandroid.data.models.*
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.Result
-import com.blueandroid.data.repository.VehicleRepository
-import com.blueandroid.widget.VehicleWidgetProvider
+import com.bluedeck.data.models.*
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.Result
+import com.bluedeck.data.repository.VehicleRepository
+import com.bluedeck.widget.VehicleWidgetProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -145,9 +145,9 @@ class VehicleViewModel @Inject constructor(
             enrollmentId = snapshot.vehicleId.ifBlank { snapshot.registrationId },
             regId = snapshot.registrationId.ifBlank { snapshot.vehicleId },
             generation = snapshot.generation,
-            nickname = snapshot.vehicleName.takeIf { it != "BlueAndroid" }.orEmpty(),
+            nickname = snapshot.vehicleName.takeIf { it != "BlueDeck" }.orEmpty(),
             modelCode = snapshot.modelCode,
-            modelName = snapshot.vehicleName.takeIf { it != "BlueAndroid" }.orEmpty(),
+            modelName = snapshot.vehicleName.takeIf { it != "BlueDeck" }.orEmpty(),
             brandIndicator = snapshot.brandIndicator
         )
         _selectedVehicle.value = cachedVehicle
@@ -236,7 +236,7 @@ class VehicleViewModel @Inject constructor(
             )) {
                 is Result.Success -> {
                     _vehicleStatus.value = result.data
-                    cacheStatusForWidget(vehicle, result.data, "Updated from BlueAndroid")
+                    cacheStatusForWidget(vehicle, result.data, "Updated from BlueDeck")
                     repository.mergeSeatConfigurations(vehicle).let { merged ->
                         if (merged.seatConfigurations != vehicle.seatConfigurations) {
                             _selectedVehicle.value = merged

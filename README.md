@@ -1,10 +1,10 @@
-# BlueAndroid
+# BlueDeck
 
 An unofficial, open-source Android app for controlling Hyundai and Kia vehicles via the Bluelink / UVO / Kia Connect API — inspired by the iOS app BetterBlue.
 
 ## Fork attribution
 
-BlueAndroid is a fork of the open-source **BlueBridge for Android** project, originally created by **[Nelwyn99](https://github.com/Nelwyn99)**. This fork is maintained separately at [tracer99/BlueAndroid](https://github.com/tracer99/BlueAndroid) to evolve features, UX, and release cadence in a different direction. It is not affiliated with the upstream BlueBridge project, Hyundai Motor Company, or Kia Corporation. See [NOTICE](NOTICE), [LICENSE](LICENSE), and [CHANGELOG](CHANGELOG.md) for release history.
+BlueDeck is a fork of the open-source **BlueBridge for Android** project, originally created by **[Nelwyn99](https://github.com/Nelwyn99)**. This fork is maintained separately at [tracer99/BlueDeck](https://github.com/tracer99/BlueDeck) to evolve features, UX, and release cadence in a different direction. It is not affiliated with the upstream BlueBridge project, Hyundai Motor Company, or Kia Corporation. See [NOTICE](NOTICE), [LICENSE](LICENSE), and [CHANGELOG](CHANGELOG.md) for release history.
 
 ## Features
 
@@ -31,7 +31,7 @@ BlueAndroid is a fork of the open-source **BlueBridge for Android** project, ori
 ## Setup
 
 1. Clone or unzip this project
-2. Open the `BlueAndroid/` project folder in **Android Studio**
+2. Open the project root folder in **Android Studio**
 3. Wait for Gradle to sync and download dependencies (~2–3 min first time)
 4. Connect an Android device or start an emulator
 5. Click **Run ▶**
@@ -42,11 +42,11 @@ BlueAndroid is a fork of the open-source **BlueBridge for Android** project, ori
 
 ## Dashboard Image
 
-The dashboard automatically selects a vehicle image for supported Hyundai and Kia models. You can also tap **Custom image** on the dashboard vehicle image card to choose your own image from the device. BlueAndroid stores the selected image URI locally and asks Android for persistable read access when the image provider supports it. Use **Reset** on the same card to return to the automatic model image.
+The dashboard automatically selects a vehicle image for supported Hyundai and Kia models. You can also tap **Custom image** on the dashboard vehicle image card to choose your own image from the device. BlueDeck stores the selected image URI locally and asks Android for persistable read access when the image provider supports it. Use **Reset** on the same card to return to the automatic model image.
 
 ## Unit Preferences
 
-In **Settings → Preferences**, BlueAndroid supports:
+In **Settings → Preferences**, BlueDeck supports:
 
 - **Temperature Unit**: Fahrenheit or Celsius
 - **Distance Unit**: miles or kilometers
@@ -54,24 +54,24 @@ In **Settings → Preferences**, BlueAndroid supports:
 
 Distance preference affects dashboard range cards, EV charging range, vehicle status range, odometer display, widgets, and Android Auto read-only status views. Vehicle API data is still cached internally in miles where the source API reports miles, then converted only for display.
 
-The time zone preference is used for vehicle-reported timestamps such as tire-pressure reading times. BlueAndroid defaults to the device time zone. If the vehicle/API reports tire timestamps in a different zone, choose an override in **Settings → Preferences → Time Zone**.
+The time zone preference is used for vehicle-reported timestamps such as tire-pressure reading times. BlueDeck defaults to the device time zone. If the vehicle/API reports tire timestamps in a different zone, choose an override in **Settings → Preferences → Time Zone**.
 
 ## Home Screen Widgets
 
-BlueAndroid includes several Android home-screen widgets backed by `VehicleWidgetProvider` and small provider subclasses. Each widget reads the cached selected-vehicle snapshot from DataStore. Refresh and command widgets call the same `VehicleRepository` used by the main app, then refresh and cache the latest battery, range, charging, and lock-state data.
+BlueDeck includes several Android home-screen widgets backed by `VehicleWidgetProvider` and small provider subclasses. Each widget reads the cached selected-vehicle snapshot from DataStore. Refresh and command widgets call the same `VehicleRepository` used by the main app, then refresh and cache the latest battery, range, charging, and lock-state data.
 
 Available widget entries:
 
 | Widget | Default size | Purpose |
 |--------|--------------|---------|
-| BlueAndroid Full | 4×2 | Battery, range, lock state, refresh, lock, unlock, and climate |
-| BlueAndroid Battery | 2×1 | Compact battery, range, and refresh |
-| BlueAndroid Battery Wide | 3×2 | Larger battery/range view with lock state and refresh |
-| BlueAndroid Lock | 1×1 | One-tap lock |
-| BlueAndroid Unlock | 1×1 | One-tap unlock |
-| BlueAndroid Climate | 1×1 | One-tap cabin climate using the app default temperature |
-| BlueAndroid Refresh | 1×1 | One-tap status refresh |
-| BlueAndroid Lock Controls | 2×1 | Compact lock and unlock buttons |
+| BlueDeck Full | 4×2 | Battery, range, lock state, refresh, lock, unlock, and climate |
+| BlueDeck Battery | 2×1 | Compact battery, range, and refresh |
+| BlueDeck Battery Wide | 3×2 | Larger battery/range view with lock state and refresh |
+| BlueDeck Lock | 1×1 | One-tap lock |
+| BlueDeck Unlock | 1×1 | One-tap unlock |
+| BlueDeck Climate | 1×1 | One-tap cabin climate using the app default temperature |
+| BlueDeck Refresh | 1×1 | One-tap status refresh |
+| BlueDeck Lock Controls | 2×1 | Compact lock and unlock buttons |
 
 Most launchers also allow these widgets to be resized after placement, within Android launcher constraints.
 
@@ -88,7 +88,7 @@ Most launchers also allow these widgets to be resized after placement, within An
 
 The home-screen widgets use only Android `RemoteViews`-compatible view classes. Earlier widget layouts used `Space` separators, which some launchers reject while inflating widgets and display as a generic “Problem loading widget” or error tile. Separators are now implemented as empty `TextView` elements, and widget provider metadata no longer marks widgets as reconfigurable because no configuration activity is supplied.
 
-BlueAndroid registers multiple widget entries so the launcher can offer separate battery, refresh, lock, unlock, climate, compact controls, and full-size widgets.
+BlueDeck registers multiple widget entries so the launcher can offer separate battery, refresh, lock, unlock, climate, compact controls, and full-size widgets.
 
 ### Widget Size and Dashboard-Style Updates
 
@@ -99,7 +99,7 @@ BlueAndroid registers multiple widget entries so the launcher can offer separate
 
 ### Climate Command Empty-Response Fix
 
-Some Hyundai/Bluelink remote climate endpoints can return HTTP success with an empty response body. BlueAndroid treats successful empty responses as successful commands instead of letting Retrofit/Gson try to parse an empty body as JSON, which previously produced `End of input at line 1 column 1 path $` after climate start/stop succeeded.
+Some Hyundai/Bluelink remote climate endpoints can return HTTP success with an empty response body. BlueDeck treats successful empty responses as successful commands instead of letting Retrofit/Gson try to parse an empty body as JSON, which previously produced `End of input at line 1 column 1 path $` after climate start/stop succeeded.
 
 
 ### Widget refresh behavior
@@ -108,12 +108,12 @@ Widget refresh buttons send a background status-refresh command through `Vehicle
 
 ## First-Run Region Selection
 
-BlueAndroid lets users choose their **Region & Brand** directly on the login screen before authentication. This is important because Hyundai/Kia accounts are region-specific and use different services in the USA, Canada, Europe, and Australia/NZ. The selected region is saved locally and is also available later under **Settings → Region & Brand**.
+BlueDeck lets users choose their **Region & Brand** directly on the login screen before authentication. This is important because Hyundai/Kia accounts are region-specific and use different services in the USA, Canada, Europe, and Australia/NZ. The selected region is saved locally and is also available later under **Settings → Region & Brand**.
 
 
 ## Europe Vehicle Support
 
-European Hyundai/Kia/Genesis support uses the EU CCSP API (`prd.eu-ccapi.*`) rather than the USA or Canada API paths. Because the EU login pages currently rely on browser/reCAPTCHA authentication, BlueAndroid's EU login expects a valid 48-character EU refresh token in the password field instead of the normal account password.
+European Hyundai/Kia/Genesis support uses the EU CCSP API (`prd.eu-ccapi.*`) rather than the USA or Canada API paths. Because the EU login pages currently rely on browser/reCAPTCHA authentication, BlueDeck's EU login expects a valid 48-character EU refresh token in the password field instead of the normal account password.
 
 Implemented EU features are experimental and include:
 
@@ -128,12 +128,12 @@ Known EU limitations:
 
 - The app does not yet generate the EU refresh token internally.
 - Horn/lights and charge-target editing are not mapped yet.
-- Location parsing is not surfaced in the BlueAndroid UI model yet.
+- Location parsing is not surfaced in the BlueDeck UI model yet.
 - Endpoint behavior can vary between Hyundai, Kia, Genesis, and CCS2-capable vehicles.
 
 ## Unit and Time Preferences
 
-BlueAndroid lets you choose Fahrenheit/Celsius, miles/kilometers, a display time zone, and 12-hour or 24-hour timestamp formatting. Vehicle-reported tire and odometer reading times use the selected time-zone and time-format preferences for consistent display.
+BlueDeck lets you choose Fahrenheit/Celsius, miles/kilometers, a display time zone, and 12-hour or 24-hour timestamp formatting. Vehicle-reported tire and odometer reading times use the selected time-zone and time-format preferences for consistent display.
 
 ## Regional Configuration
 
@@ -156,10 +156,10 @@ In the app go to **Settings → Region & Brand** and select:
 
 ## Security & Privacy
 
-- BlueAndroid is a client app for your existing Hyundai Bluelink or Kia Connect account.
+- BlueDeck is a client app for your existing Hyundai Bluelink or Kia Connect account.
 - Credentials and tokens are stored locally using the app's DataStore-backed storage layer.
 - Biometric lock can be enabled to add an extra local access gate before using the app.
-- Vehicle commands are sensitive actions. Treat any device with BlueAndroid installed as capable of sending remote vehicle commands.
+- Vehicle commands are sensitive actions. Treat any device with BlueDeck installed as capable of sending remote vehicle commands.
 - This app is not intended for shared or unattended devices unless Android device-level security is enabled.
 
 ## Troubleshooting
@@ -177,7 +177,7 @@ In the app go to **Settings → Region & Brand** and select:
 
 ## Canadian Vehicle Support
 
-Canada uses the Hyundai/Kia TODS web API rather than the USA mobile API. BlueAndroid includes a separate Canadian API path for:
+Canada uses the Hyundai/Kia TODS web API rather than the USA mobile API. BlueDeck includes a separate Canadian API path for:
 
 - Canadian Hyundai: `https://mybluelink.ca/tods/api/`
 - Canadian Kia: `https://kiaconnect.ca/tods/api/`
@@ -194,7 +194,7 @@ Implemented Canadian flows:
 - cabin climate start/stop through `/rmtstrt`, `/rmtstp`, `/evc/rfon`, and `/evc/rfoff`
 - EV charge start/stop through `/evc/rcstrt` and `/evc/rcstp`
 
-Canadian OTP/MFA endpoints are present in the API layer, but the login screen does not yet expose an OTP entry flow. If the server returns an OTP-required response for a new device, BlueAndroid shows a clear message asking the user to authenticate once in the official Canadian app or web portal before trying again.
+Canadian OTP/MFA endpoints are present in the API layer, but the login screen does not yet expose an OTP entry flow. If the server returns an OTP-required response for a new device, BlueDeck shows a clear message asking the user to authenticate once in the official Canadian app or web portal before trying again.
 
 Currently not mapped for Canada: horn/lights, vehicle location, and charge-target editing.
 
@@ -212,7 +212,7 @@ Mapped features include login, vehicle list, cached/live vehicle status, lock/un
 
 ```
 app/
-└── java/com/blueandroid/
+└── java/com/bluedeck/
     ├── data/
     │   ├── api/          # Retrofit API service + constants
     │   ├── models/       # All data classes (Vehicle, Status, etc.)
@@ -270,9 +270,9 @@ This app is **not affiliated with Hyundai Motor Company or Kia Corporation**. It
 
 ### Biometric lock grace period
 
-When biometric lock is enabled, BlueAndroid now keeps the current unlock session active during brief app switches or accidental minimizes. The app only requires biometric re-authentication after it has been in the background for more than about five minutes, or after the app process/session is otherwise reset.
+When biometric lock is enabled, BlueDeck now keeps the current unlock session active during brief app switches or accidental minimizes. The app only requires biometric re-authentication after it has been in the background for more than about five minutes, or after the app process/session is otherwise reset.
 
 
 ### Biometric widget behavior
 
-When biometric lock is enabled, BlueAndroid keeps a short unlock grace period after a successful biometric check. Opening the app from a home-screen widget during that grace period should return to the dashboard without asking for fingerprint again. After the grace period expires, widget-launched app opens require biometric unlock again.
+When biometric lock is enabled, BlueDeck keeps a short unlock grace period after a successful biometric check. Opening the app from a home-screen widget during that grace period should return to the dashboard without asking for fingerprint again. After the grace period expires, widget-launched app opens require biometric unlock again.

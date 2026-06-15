@@ -1,4 +1,4 @@
-package com.blueandroid.data.models
+package com.bluedeck.data.models
 
 import com.google.gson.annotations.SerializedName
 
@@ -766,7 +766,7 @@ data class CommandHistoryEntry(
 )
 
 data class WidgetVehicleSnapshot(
-    val vehicleName: String = "BlueAndroid",
+    val vehicleName: String = "BlueDeck",
     val vehicleVin: String = "",
     val vehicleId: String = "",
     val registrationId: String = "",

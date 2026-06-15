@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.animation.AnimatedVisibility
@@ -34,13 +34,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.data.models.CommandHistoryEntry
-import com.blueandroid.data.models.EVStatus
-import com.blueandroid.ui.components.ControlSection
-import com.blueandroid.ui.components.CommandStatusBanner
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.CommandStatus
-import com.blueandroid.viewmodel.VehicleViewModel
+import com.bluedeck.data.models.CommandHistoryEntry
+import com.bluedeck.data.models.EVStatus
+import com.bluedeck.ui.components.ControlSection
+import com.bluedeck.ui.components.CommandStatusBanner
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.CommandStatus
+import com.bluedeck.viewmodel.VehicleViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -284,7 +284,7 @@ fun EVChargingScreen(
                             "Current vehicle targets: AC ${reportedAcTarget?.let { "$it%" } ?: "not reported"} • DC ${reportedDcTarget?.let { "$it%" } ?: "not reported"}"
                         }
                         reportedTargets.isNotEmpty() -> {
-                            "Charge targets are reported by the vehicle, but BlueAndroid cannot confidently map them to AC/DC yet."
+                            "Charge targets are reported by the vehicle, but BlueDeck cannot confidently map them to AC/DC yet."
                         }
                         else -> "Current vehicle targets unavailable until the next vehicle-status refresh."
                     }

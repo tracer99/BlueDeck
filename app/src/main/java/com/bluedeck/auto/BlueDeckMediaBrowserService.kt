@@ -1,4 +1,4 @@
-package com.blueandroid.auto
+package com.bluedeck.auto
 
 import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
@@ -7,11 +7,11 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.media.MediaBrowserServiceCompat
-import com.blueandroid.data.models.Vehicle
-import com.blueandroid.data.models.VehicleStatusData
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.Result
-import com.blueandroid.data.repository.VehicleRepository
+import com.bluedeck.data.models.Vehicle
+import com.bluedeck.data.models.VehicleStatusData
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.Result
+import com.bluedeck.data.repository.VehicleRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,11 +26,11 @@ import javax.inject.Inject
  * MediaBrowser fallback for Android Auto discovery.
  *
  * Android Auto surfaces media apps more reliably than sideloaded template/IoT apps on
- * some hosts. This exposes BlueAndroid as a read-only media-style status browser. It does
+ * some hosts. This exposes BlueDeck as a read-only media-style status browser. It does
  * not play audio and does not expose vehicle commands.
  */
 @AndroidEntryPoint
-class BlueAndroidMediaBrowserService : MediaBrowserServiceCompat() {
+class BlueDeckMediaBrowserService : MediaBrowserServiceCompat() {
 
     @Inject lateinit var vehicleRepository: VehicleRepository
     @Inject lateinit var preferencesManager: PreferencesManager
@@ -40,11 +40,11 @@ class BlueAndroidMediaBrowserService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
-        mediaSession = MediaSessionCompat(this, "BlueAndroidMediaBrowser").apply {
+        mediaSession = MediaSessionCompat(this, "BlueDeckMediaBrowser").apply {
             setMetadata(
                 MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "BlueAndroid")
-                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, "BlueAndroid Status")
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "BlueDeck")
+                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, "BlueDeck Status")
                     .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, "Read-only vehicle status")
                     .build()
             )
@@ -96,7 +96,7 @@ class BlueAndroidMediaBrowserService : MediaBrowserServiceCompat() {
             is Result.Success -> vehicles.data.firstOrNull()
             is Result.Error -> return mutableListOf(playableItem("error", "Vehicle list failed", vehicles.message))
             else -> null
-        } ?: return mutableListOf(playableItem("no_vehicle", "No vehicle", "Open BlueAndroid on your phone first"))
+        } ?: return mutableListOf(playableItem("no_vehicle", "No vehicle", "Open BlueDeck on your phone first"))
 
         val status = when (val res = vehicleRepository.getVehicleStatus(
             vin = vehicle.vin,
@@ -199,10 +199,10 @@ class BlueAndroidMediaBrowserService : MediaBrowserServiceCompat() {
     private enum class StatusGroup { OVERVIEW, CHARGING, TIRES, DIAGNOSTICS }
 
     companion object {
-        private const val ROOT_ID = "blueandroid_root"
-        private const val OVERVIEW_ID = "blueandroid_overview"
-        private const val CHARGING_ID = "blueandroid_charging"
-        private const val TIRES_ID = "blueandroid_tires"
-        private const val DIAGNOSTICS_ID = "blueandroid_diagnostics"
+        private const val ROOT_ID = "BlueDeck_root"
+        private const val OVERVIEW_ID = "BlueDeck_overview"
+        private const val CHARGING_ID = "BlueDeck_charging"
+        private const val TIRES_ID = "BlueDeck_tires"
+        private const val DIAGNOSTICS_ID = "BlueDeck_diagnostics"
     }
 }

@@ -1,7 +1,7 @@
-package com.blueandroid.data.models
+package com.bluedeck.data.models
 
 /**
- * UI-only vehicle presets for testing how BlueAndroid renders different vehicle/status combinations.
+ * UI-only vehicle presets for testing how BlueDeck renders different vehicle/status combinations.
  * These mock profiles never replace the real selected vehicle inside command calls.
  */
 enum class MockVehicleProfile(

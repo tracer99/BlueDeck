@@ -1,4 +1,4 @@
-package com.blueandroid.data.models
+package com.bluedeck.data.models
 
 enum class SupportState {
     SUPPORTED,

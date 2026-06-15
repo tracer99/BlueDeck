@@ -1,12 +1,12 @@
-package com.blueandroid.viewmodel
+package com.bluedeck.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.blueandroid.data.api.Region
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.SecureCredentialsManager
-import com.blueandroid.data.repository.Result
-import com.blueandroid.data.repository.VehicleRepository
+import com.bluedeck.data.api.Region
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.SecureCredentialsManager
+import com.bluedeck.data.repository.Result
+import com.bluedeck.data.repository.VehicleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -117,11 +117,11 @@ class AuthViewModel @Inject constructor(
                     secureCredentialsManager.saveCredentials(username, password, servicePin)
                     savedCredentialsAvailable.value = true
                 }
-                android.util.Log.d("BlueAndroid", "Login success")
+                android.util.Log.d("BlueDeck", "Login success")
                 _loginUiState.value = LoginUiState(success = true)
             }
             is Result.Error -> {
-                android.util.Log.d("BlueAndroid", "Login error: ${result.message}")
+                android.util.Log.d("BlueDeck", "Login error: ${result.message}")
                 if (result.code == 460) {
                     pendingLoginCredentials = PendingLoginCredentials(username, password, servicePin, saveForBiometrics)
                     _loginUiState.value = LoginUiState(error = result.message, kiaOtpRequired = true)

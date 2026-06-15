@@ -1,4 +1,4 @@
-package com.blueandroid.data.models
+package com.bluedeck.data.models
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

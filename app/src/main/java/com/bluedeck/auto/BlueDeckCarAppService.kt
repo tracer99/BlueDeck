@@ -1,4 +1,4 @@
-package com.blueandroid.auto
+package com.bluedeck.auto
 
 import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
@@ -9,11 +9,11 @@ import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
-import com.blueandroid.data.models.Vehicle
-import com.blueandroid.data.models.VehicleStatusData
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.Result
-import com.blueandroid.data.repository.VehicleRepository
+import com.bluedeck.data.models.Vehicle
+import com.bluedeck.data.models.VehicleStatusData
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.Result
+import com.bluedeck.data.repository.VehicleRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,13 +27,13 @@ import java.util.Locale
 import javax.inject.Inject
 
 /**
- * Read-only Android Auto companion for BlueAndroid.
+ * Read-only Android Auto companion for BlueDeck.
  *
  * This intentionally exposes status only. Remote commands such as lock, unlock,
  * climate, charge start/stop, and seat controls are not available on Android Auto.
  */
 @AndroidEntryPoint
-class BlueAndroidCarAppService : CarAppService() {
+class BlueDeckCarAppService : CarAppService() {
     @Inject lateinit var vehicleRepository: VehicleRepository
     @Inject lateinit var preferencesManager: PreferencesManager
 
@@ -45,7 +45,7 @@ class BlueAndroidCarAppService : CarAppService() {
     override fun onCreateSession(): Session {
         return object : Session() {
             override fun onCreateScreen(intent: android.content.Intent): Screen {
-                return BlueAndroidAutoScreen(
+                return BlueDeckAutoScreen(
                     carContext = carContext,
                     vehicleRepository = vehicleRepository,
                     preferencesManager = preferencesManager
@@ -63,7 +63,7 @@ private class AutoSnapshot(
     val loading: Boolean = false
 )
 
-private open class BlueAndroidAutoScreen(
+private open class BlueDeckAutoScreen(
     carContext: CarContext,
     protected val vehicleRepository: VehicleRepository,
     protected val preferencesManager: PreferencesManager
@@ -101,7 +101,7 @@ private open class BlueAndroidAutoScreen(
             val ev = status.evStatus
             list.addItem(
                 Row.Builder()
-                    .setTitle(vehicle.displayName.ifBlank { "BlueAndroid" })
+                    .setTitle(vehicle.displayName.ifBlank { "BlueDeck" })
                     .addText("VIN ${vehicle.vin.takeLast(6)} · ${status.lockLabel()}")
                     .addText("Updated ${snap.lastUpdated.formatAutoTime()}")
                     .build()
@@ -149,7 +149,7 @@ private open class BlueAndroidAutoScreen(
         }
 
         return ListTemplate.Builder()
-            .setTitle("BlueAndroid")
+            .setTitle("BlueDeck")
             .setSingleList(list.build())
             .build()
     }
@@ -179,7 +179,7 @@ private open class BlueAndroidAutoScreen(
                 }
                 val selectedVin = preferencesManager.selectedVin.first()
                 val vehicle = vehicles.firstOrNull { it.vin == selectedVin } ?: vehicles.firstOrNull()
-                    ?: throw IllegalStateException("No vehicle found. Open BlueAndroid on the phone first.")
+                    ?: throw IllegalStateException("No vehicle found. Open BlueDeck on the phone first.")
                 val statusResult = vehicleRepository.getVehicleStatus(
                     vin = vehicle.vin,
                     forceRefresh = forceFromServer,
@@ -223,6 +223,6 @@ private fun Long.formatAutoTime(): String {
     return SimpleDateFormat("h:mm a", Locale.US).format(Date(this))
 }
 
-private fun com.blueandroid.data.models.TirePressureStatus.autoTireSummary(): String {
+private fun com.bluedeck.data.models.TirePressureStatus.autoTireSummary(): String {
     return "FL ${frontLeftPsi} · FR ${frontRightPsi} · RL ${rearLeftPsi} · RR ${rearRightPsi} PSI"
 }

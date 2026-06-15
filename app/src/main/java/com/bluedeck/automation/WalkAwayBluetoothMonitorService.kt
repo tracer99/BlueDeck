@@ -1,4 +1,4 @@
-package com.blueandroid.automation
+package com.bluedeck.automation
 
 import android.app.Service
 import android.content.Context

@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import android.app.Activity
 import android.content.Context
@@ -31,9 +31,9 @@ import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.data.api.Region
-import com.blueandroid.ui.theme.*
-import com.blueandroid.viewmodel.AuthViewModel
+import com.bluedeck.data.api.Region
+import com.bluedeck.ui.theme.*
+import com.bluedeck.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,13 +66,13 @@ fun LoginScreen(
             authViewModel.clearError()
             return
         }
-        launchBlueAndroidBiometricPrompt(
+        launchBlueDeckBiometricPrompt(
             activity = fragmentActivity,
-            title = "Sign in to BlueAndroid",
+            title = "Sign in to BlueDeck",
             subtitle = "Use fingerprint or face unlock to unlock your saved Hyundai login",
             onAuthenticated = { authViewModel.loginWithSavedCredentials() },
             onError = { message ->
-                android.util.Log.d("BlueAndroid", "Biometric login error: $message")
+                android.util.Log.d("BlueDeck", "Biometric login error: $message")
             }
         )
     }
@@ -110,7 +110,7 @@ fun LoginScreen(
             )
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "BlueAndroid",
+                text = "BlueDeck",
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -480,7 +480,7 @@ fun LoginScreen(
 }
 
 
-private fun launchBlueAndroidBiometricPrompt(
+private fun launchBlueDeckBiometricPrompt(
     activity: FragmentActivity,
     title: String,
     subtitle: String,

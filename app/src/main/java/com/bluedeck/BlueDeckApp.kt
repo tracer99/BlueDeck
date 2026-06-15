@@ -1,4 +1,4 @@
-package com.blueandroid
+package com.bluedeck
 
 import android.app.Application
 import android.bluetooth.BluetoothA2dp
@@ -6,9 +6,9 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHeadset
 import android.content.IntentFilter
 import android.os.Build
-import com.blueandroid.automation.VehicleConnectionReceiver
-import com.blueandroid.automation.WalkAwayBluetoothMonitorService
-import com.blueandroid.data.repository.PreferencesManager
+import com.bluedeck.automation.VehicleConnectionReceiver
+import com.bluedeck.automation.WalkAwayBluetoothMonitorService
+import com.bluedeck.data.repository.PreferencesManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
-class BlueAndroidApp : Application() {
+class BlueDeckApp : Application() {
     private val vehicleConnectionReceiver = VehicleConnectionReceiver()
 
     override fun onCreate() {

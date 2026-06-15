@@ -1,4 +1,4 @@
-package com.blueandroid.ui.screens
+package com.bluedeck.ui.screens
 
 import android.Manifest
 import android.bluetooth.BluetoothManager
@@ -37,14 +37,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.blueandroid.BuildConfig
-import com.blueandroid.automation.WalkAwayBluetoothMonitorService
-import com.blueandroid.automation.WalkAwayLockScheduler
-import com.blueandroid.data.api.Region
-import com.blueandroid.ui.components.ControlSection
-import com.blueandroid.ui.theme.ThemeMode
-import com.blueandroid.viewmodel.SettingsViewModel
-import com.blueandroid.widget.VehicleWidgetProvider
+import com.bluedeck.BuildConfig
+import com.bluedeck.automation.WalkAwayBluetoothMonitorService
+import com.bluedeck.automation.WalkAwayLockScheduler
+import com.bluedeck.data.api.Region
+import com.bluedeck.ui.components.ControlSection
+import com.bluedeck.ui.theme.ThemeMode
+import com.bluedeck.viewmodel.SettingsViewModel
+import com.bluedeck.widget.VehicleWidgetProvider
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -417,7 +417,7 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "Control when BlueAndroid asks for fingerprint while your account session is valid",
+                                    "Control when BlueDeck asks for fingerprint while your account session is valid",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                 )
@@ -465,10 +465,10 @@ fun SettingsScreen(
                             }
                             Text(
                                 when (biometricUnlockMode) {
-                                    "DAILY" -> "BlueAndroid will suppress app-open fingerprint prompts for 24 hours after a successful unlock, as long as the account session is still valid."
-                                    "COMMANDS_ONLY" -> "BlueAndroid will not prompt when opening the app. Use this with the 30-day account session for fewer interruptions."
-                                    "NEVER" -> "BlueAndroid will not ask for fingerprint while the account session remains valid."
-                                    else -> "BlueAndroid will ask again after it has been in the background for about 5 minutes."
+                                    "DAILY" -> "BlueDeck will suppress app-open fingerprint prompts for 24 hours after a successful unlock, as long as the account session is still valid."
+                                    "COMMANDS_ONLY" -> "BlueDeck will not prompt when opening the app. Use this with the 30-day account session for fewer interruptions."
+                                    "NEVER" -> "BlueDeck will not ask for fingerprint while the account session remains valid."
+                                    else -> "BlueDeck will ask again after it has been in the background for about 5 minutes."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
@@ -626,10 +626,10 @@ fun SettingsScreen(
                     SettingsInfoRow("Version", BuildConfig.VERSION_NAME)
                     SettingsInfoRow("API", "Hyundai Bluelink / Kia Connect")
                     SettingsInfoRow("Original project", "BlueBridge by Nelwyn99")
-                    SettingsInfoRow("Repository", "github.com/tracer99/BlueAndroid")
+                    SettingsInfoRow("Repository", "github.com/tracer99/BlueDeck")
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "BlueAndroid is a fork maintained independently from BlueBridge. It is an unofficial third-party app and is not affiliated with Hyundai or Kia. Use at your own risk.",
+                        "BlueDeck is a fork maintained independently from BlueBridge. It is an unofficial third-party app and is not affiliated with Hyundai or Kia. Use at your own risk.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
                     )

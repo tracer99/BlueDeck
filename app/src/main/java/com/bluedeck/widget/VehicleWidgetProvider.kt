@@ -1,4 +1,4 @@
-package com.blueandroid.widget
+package com.bluedeck.widget
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -8,18 +8,18 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.widget.RemoteViews
-import com.blueandroid.MainActivity
-import com.blueandroid.R
-import com.blueandroid.data.models.CommandHistoryEntry
-import com.blueandroid.data.models.Vehicle
-import com.blueandroid.data.models.VehicleStatusData
-import com.blueandroid.data.models.WidgetVehicleSnapshot
-import com.blueandroid.data.models.hasFuelTelemetryFor
-import com.blueandroid.data.models.totalRangeMilesFor
-import com.blueandroid.data.repository.PreferencesManager
-import com.blueandroid.data.repository.Result
-import com.blueandroid.data.repository.SecureCredentialsManager
-import com.blueandroid.data.repository.VehicleRepository
+import com.bluedeck.MainActivity
+import com.bluedeck.R
+import com.bluedeck.data.models.CommandHistoryEntry
+import com.bluedeck.data.models.Vehicle
+import com.bluedeck.data.models.VehicleStatusData
+import com.bluedeck.data.models.WidgetVehicleSnapshot
+import com.bluedeck.data.models.hasFuelTelemetryFor
+import com.bluedeck.data.models.totalRangeMilesFor
+import com.bluedeck.data.repository.PreferencesManager
+import com.bluedeck.data.repository.Result
+import com.bluedeck.data.repository.SecureCredentialsManager
+import com.bluedeck.data.repository.VehicleRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -65,10 +65,10 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
-        private const val ACTION_REFRESH = "com.blueandroid.widget.REFRESH"
-        private const val ACTION_LOCK = "com.blueandroid.widget.LOCK"
-        private const val ACTION_UNLOCK = "com.blueandroid.widget.UNLOCK"
-        private const val ACTION_CLIMATE = "com.blueandroid.widget.CLIMATE"
+        private const val ACTION_REFRESH = "com.bluedeck.widget.REFRESH"
+        private const val ACTION_LOCK = "com.bluedeck.widget.LOCK"
+        private const val ACTION_UNLOCK = "com.bluedeck.widget.UNLOCK"
+        private const val ACTION_CLIMATE = "com.bluedeck.widget.CLIMATE"
 
         private val widgetActions = setOf(ACTION_REFRESH, ACTION_LOCK, ACTION_UNLOCK, ACTION_CLIMATE)
 
@@ -144,7 +144,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             distanceUnit: String
         ): RemoteViews {
             views.setOnClickPendingIntent(R.id.widget_root, openPendingIntent)
-            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueAndroid" })
+            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueDeck" })
             views.setTextViewText(R.id.widget_lock_status, verboseLockStatus(snapshot))
             setBatteryViews(views, snapshot, includeBatteryPrefix = false, distanceUnit = distanceUnit)
             views.setTextViewText(R.id.widget_battery_meta, compactUpdatedStatus(snapshot))
@@ -170,7 +170,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             distanceUnit: String
         ): RemoteViews {
             views.setOnClickPendingIntent(R.id.widget_root, openPendingIntent)
-            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueAndroid" })
+            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueDeck" })
             setBatteryViews(views, snapshot, includeBatteryPrefix = false, distanceUnit = distanceUnit)
             views.setTextViewText(R.id.widget_updated, updatedStatus(snapshot))
             views.setOnClickPendingIntent(R.id.widget_refresh_button, widgetPendingIntent(context, ACTION_REFRESH, 30))
@@ -186,7 +186,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             distanceUnit: String
         ): RemoteViews {
             views.setOnClickPendingIntent(R.id.widget_root, openPendingIntent)
-            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueAndroid" })
+            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueDeck" })
             setBatteryViews(views, snapshot, includeBatteryPrefix = false, distanceUnit = distanceUnit)
             views.setTextViewText(R.id.widget_lock_status, lockStatus(snapshot))
             views.setTextViewText(R.id.widget_charging, compactChargeStatus(snapshot))
@@ -222,7 +222,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             openPendingIntent: PendingIntent
         ): RemoteViews {
             views.setOnClickPendingIntent(R.id.widget_root, openPendingIntent)
-            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueAndroid" })
+            views.setTextViewText(R.id.widget_vehicle_name, snapshot.vehicleName.ifBlank { "BlueDeck" })
             views.setTextViewText(R.id.widget_lock_status, lockStatus(snapshot))
             views.setTextViewText(R.id.widget_updated, updatedStatus(snapshot))
             views.setOnClickPendingIntent(R.id.widget_lock_button, widgetPendingIntent(context, ACTION_LOCK, 40))
@@ -244,7 +244,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
             return text.endsWith("…") ||
                 text.contains("from widget", ignoreCase = true) ||
                 text.contains("timed out", ignoreCase = true) ||
-                text.contains("Open BlueAndroid", ignoreCase = true)
+                text.contains("Open BlueDeck", ignoreCase = true)
         }
 
         private fun statusText(vararg values: String): String {
@@ -482,7 +482,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
 
             val result = withTimeoutOrNull(25_000L) {
                 val vehicle = selectedVehicle(repository, preferencesManager)
-                    ?: return@withTimeoutOrNull Result.Error("Open BlueAndroid to select a vehicle")
+                    ?: return@withTimeoutOrNull Result.Error("Open BlueDeck to select a vehicle")
 
                 when (action) {
                     ACTION_REFRESH -> refreshVehicleStatus(repository, preferencesManager, context, vehicle, "Refreshed from widget")
@@ -563,7 +563,7 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
                 enrollmentId = snapshot.vehicleId,
                 regId = cachedRegistrationId,
                 generation = snapshot.generation.ifBlank { "3" },
-                nickname = snapshot.vehicleName.takeIf { it.isNotBlank() && it != "BlueAndroid" }.orEmpty(),
+                nickname = snapshot.vehicleName.takeIf { it.isNotBlank() && it != "BlueDeck" }.orEmpty(),
                 brandIndicator = snapshot.brandIndicator.ifBlank { "H" },
                 modelCode = snapshot.modelCode
             )

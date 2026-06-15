@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BlueAndroid"
+rootProject.name = "BlueDeck"
 include(":app")

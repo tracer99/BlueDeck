@@ -1,4 +1,4 @@
-package com.blueandroid.data.api
+package com.bluedeck.data.api
 
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
