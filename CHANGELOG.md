@@ -1,8 +1,8 @@
 # Changelog
 
-All notable changes to BlueAndroid are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to BlueDeck are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-BlueAndroid is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by Nelwyn99, maintained independently at [tracer99/BlueAndroid](https://github.com/tracer99/BlueAndroid).
+BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by Nelwyn99, maintained independently at [tracer99/BlueDeck](https://github.com/tracer99/BlueDeck).
 
 ## Versioning policy
 
@@ -12,6 +12,12 @@ BlueAndroid is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) b
 - **Git**: each feature, plan, or fix is developed on a new branch (`feature/`, `fix/`, or `plan/`), not directly on `main`.
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
+
+## [1.5.0] - 2026-06-14
+
+### Changed
+
+- Rebranded from **BlueAndroid** to **BlueDeck** — app name, package (`com.bluedeck`), Gradle project name, Material 3 theme, widgets, Android Auto services, and documentation (see [NOTICE](NOTICE)).
 
 ## [1.4.0] - 2026-06-02
 
@@ -54,5 +60,6 @@ Initial public release of this fork, still distributed as **BlueBridge for Andro
 
 - Evolved from earlier `v1.0` baseline with expanded regional APIs, widget styling, and settings/status UI improvements.
 
-[1.4.0]: https://github.com/tracer99/BlueAndroid/compare/v1.3.10...v1.4.0
-[1.3.10]: https://github.com/tracer99/BlueAndroid/releases/tag/v1.3.10
+[1.5.0]: https://github.com/tracer99/BlueDeck/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/tracer99/BlueDeck/compare/v1.3.10...v1.4.0
+[1.3.10]: https://github.com/tracer99/BlueDeck/releases/tag/v1.3.10
