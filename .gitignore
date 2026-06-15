@@ -1,12 +1,78 @@
+# ── Local machine / secrets ───────────────────────────────────────────────────
 local.properties
-.kotlin/
 *.jks
 *.keystore
-*.apk
-*.aab
-build
-app/build
-.gradle/
-.idea/
-.DS_Store
+*.p12
+*.pfx
 
+# ── Gradle ────────────────────────────────────────────────────────────────────
+.gradle/
+**/.gradle/
+**/build/
+
+# ── Kotlin ────────────────────────────────────────────────────────────────────
+.kotlin/
+**/.kotlin/
+
+# ── Android Studio / IntelliJ ─────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# User-specific IDE settings (when .idea/ is partially tracked)
+.idea/caches/
+.idea/libraries/
+.idea/shelf/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries/
+.idea/usage.statistics.xml
+.idea/sonarlint/
+.idea/assetWizardSettings.xml
+.idea/navEditor.xml
+.idea/deploymentTargetDropDown.xml
+.idea/deploymentTargetSelector.xml
+.idea/render.experimental.xml
+.idea/gradle.xml
+.idea/misc.xml
+.idea/compiler.xml
+.idea/jarRepositories.xml
+.idea/modules.xml
+.idea/*.xml
+
+# Android Studio captures & profilers
+/captures/
+*.hprof
+
+# NDK / native build
+.externalNativeBuild/
+.cxx/
+**/.externalNativeBuild/
+**/.cxx/
+
+# ── Built artifacts ───────────────────────────────────────────────────────────
+*.apk
+*.ap_
+*.aab
+*.aar
+*.dex
+*.class
+
+# Legacy Eclipse / Ant output
+bin/
+gen/
+out/
+release/
+
+# ── Logs & OS ─────────────────────────────────────────────────────────────────
+*.log
+.DS_Store
+Thumbs.db
+
+# ── Misc tooling ──────────────────────────────────────────────────────────────
+.navigation/
+*.swp
+*~
+*.orig

@@ -13,6 +13,60 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.6.5] - 2026-06-14
+
+### Changed
+
+- “Stay logged in for 30 days” moved from Settings to the login screen as a checkbox (on by default).
+
+## [1.6.4] - 2026-06-14
+
+### Fixed
+
+- Login biometric and trust-device checkboxes hard to see when checked (dark checkmark on dark blue); now use `onPrimary` checkmark and clearer unchecked border.
+
+## [1.6.3] - 2026-06-14
+
+### Fixed
+
+- Login Sign In / Verify button text unreadable (dark label on dark blue); button now uses theme `onPrimary` content color.
+
+## [1.6.2] - 2026-06-14
+
+### Fixed
+
+- Hyundai Canada email OTP verification failing with HTTP 200 / “Failure”: validate and token steps now use the login email for `userAccount` (matching the official API) while send-OTP keeps the API account email for delivery.
+- Hyundai Canada SMS OTP not sent when the API returns a partially masked phone (e.g. last four digits only); that masked value is now forwarded to `sendotp` instead of being dropped.
+- Canada MFA success detection when `responseCode` is returned as a string, and when `verifiedOtp` is omitted but a validation key is present.
+
+## [1.6.1] - 2026-06-14
+
+### Fixed
+
+- Canada Bluelink/Kia Connect SMS verification codes not delivered when the API returns a masked phone number (for example `XXXX`); the send-OTP request now omits masked numbers and lets the server resolve the account phone.
+- Canada MFA now uses the API `userAccount` email from verification setup when `emailList` is absent, and uses that account email consistently in send/validate/token requests.
+
+## [1.6.0] - 2026-06-14
+
+### Added
+
+- Full Canada MFA login for Hyundai, Kia, and Genesis (`7110` device verification flow with email/SMS OTP, trust-device for 90 days).
+- Unified verification-code UI on the login screen for US Kia and Canada (method picker, resend with cooldown, trust-device checkbox).
+- Background session refresh recovery when verification is required again (routes back to login with OTP entry).
+
+### Changed
+
+- US Kia OTP flow refactored onto shared verification challenge model with SMS/email delivery selection and resend support.
+
+### Fixed
+
+- Login screen OTP notice shown as a cut-off error at the bottom; verification message now appears in an info banner above the code field.
+- Sign In / Verify button pinned above the keyboard so it stays visible while typing.
+- Verification code field clipped at the top when the keyboard was open (scroll viewport inset + over-scroll).
+- Hilt build failure with Kotlin 2.2 (`kotlinx-metadata-jvm` 2.2.0 unsupported on Hilt 2.52) by upgrading Dagger/Hilt to 2.59.2.
+- Hilt `@AndroidEntryPoint` kapt failure on AGP 9 by migrating Hilt to KSP and using explicit entry point on `CarAppService`.
+- Restored complete Gradle wrapper (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`) so Android Studio can sync and enable the Run configuration.
+
 ## [1.5.0] - 2026-06-14
 
 ### Changed

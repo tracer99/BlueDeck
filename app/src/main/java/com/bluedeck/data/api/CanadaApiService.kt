@@ -52,6 +52,30 @@ interface CanadaApiService {
         @Body body: Map<String, String>
     ): Response<ResponseBody>
 
+    @POST("mfa/selverifmeth")
+    suspend fun selectVerificationMethod(
+        @Header("Deviceid") deviceId: String,
+        @Body body: Map<String, String>
+    ): Response<ResponseBody>
+
+    @POST("mfa/sendotp")
+    suspend fun sendOtp(
+        @Header("Deviceid") deviceId: String,
+        @Body body: Map<String, String>
+    ): Response<ResponseBody>
+
+    @POST("mfa/validateotp")
+    suspend fun validateOtp(
+        @Header("Deviceid") deviceId: String,
+        @Body body: Map<String, String>
+    ): Response<ResponseBody>
+
+    @POST("mfa/genmfatkn")
+    suspend fun generateMfaToken(
+        @Header("Deviceid") deviceId: String,
+        @Body body: Map<String, String>
+    ): Response<ResponseBody>
+
     @POST("vhcllst")
     suspend fun getVehicles(
         @Header("accessToken") accessToken: String,

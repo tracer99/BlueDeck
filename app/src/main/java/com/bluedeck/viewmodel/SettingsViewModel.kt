@@ -37,9 +37,6 @@ class SettingsViewModel @Inject constructor(
     val biometricUnlockMode = preferencesManager.biometricUnlockMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, "APP_OPEN")
 
-    val stayLoggedIn30Days = preferencesManager.stayLoggedIn30Days
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
     val lastBiometricUnlockAt = preferencesManager.lastBiometricUnlockAt
         .stateIn(viewModelScope, SharingStarted.Eagerly, -1L)
 
@@ -95,10 +92,6 @@ class SettingsViewModel @Inject constructor(
 
     fun setBiometricUnlockMode(mode: String) = viewModelScope.launch {
         preferencesManager.setBiometricUnlockMode(mode)
-    }
-
-    fun setStayLoggedIn30Days(enabled: Boolean) = viewModelScope.launch {
-        preferencesManager.setStayLoggedIn30Days(enabled)
     }
 
     fun setLastBiometricUnlockAt(timestamp: Long) = viewModelScope.launch {

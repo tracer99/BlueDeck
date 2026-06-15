@@ -165,7 +165,9 @@ class VehicleViewModel @Inject constructor(
                 }
                 is Result.Error -> {
                     _statusError.value = result.message
-                    if (result.message.contains("Session expired", ignoreCase = true)) {
+                    if (result.message.contains("Session expired", ignoreCase = true) ||
+                        result.message.contains("verification", ignoreCase = true)
+                    ) {
                         _vehicleStatus.value = null
                         _selectedVehicle.value = null
                     }

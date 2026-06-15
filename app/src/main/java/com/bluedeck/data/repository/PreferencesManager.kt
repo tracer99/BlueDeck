@@ -36,6 +36,8 @@ class PreferencesManager @Inject constructor(
         val SESSION_EXPIRES_AT = longPreferencesKey("session_expires_at")
         val STAY_LOGGED_IN_30_DAYS = booleanPreferencesKey("stay_logged_in_30_days")
         val PASSWORD_REQUIRED = booleanPreferencesKey("password_required")
+        val OTP_PENDING = booleanPreferencesKey("otp_pending")
+        val OTP_PENDING_USERNAME = stringPreferencesKey("otp_pending_username")
         val SELECTED_VIN = stringPreferencesKey("selected_vin")
         val REGION = stringPreferencesKey("region")
         val TEMPERATURE_UNIT = stringPreferencesKey("temp_unit")
@@ -123,6 +125,14 @@ class PreferencesManager @Inject constructor(
     val passwordRequired: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[PASSWORD_REQUIRED] ?: false }
+
+    val otpPending: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OTP_PENDING] ?: false }
+
+    val otpPendingUsername: Flow<String?> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OTP_PENDING_USERNAME] }
 
     val hasRecoverableSession: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -335,6 +345,27 @@ class PreferencesManager @Inject constructor(
             prefs[TOKEN_EXPIRES_AT] = tokenExpiresAt
             prefs[SESSION_EXPIRES_AT] = if (stayLoggedIn) now + THIRTY_DAYS_MS else tokenExpiresAt
             prefs[PASSWORD_REQUIRED] = false
+            prefs[OTP_PENDING] = false
+            prefs.remove(OTP_PENDING_USERNAME)
+        }
+    }
+
+    suspend fun setOtpPending(username: String) {
+        dataStore.edit { prefs ->
+            prefs[OTP_PENDING] = true
+            prefs[OTP_PENDING_USERNAME] = username
+            prefs[PASSWORD_REQUIRED] = true
+            prefs.remove(ACCESS_TOKEN)
+            prefs.remove(REFRESH_TOKEN)
+            prefs.remove(TOKEN_EXPIRES_AT)
+            prefs.remove(SESSION_EXPIRES_AT)
+        }
+    }
+
+    suspend fun clearOtpPending() {
+        dataStore.edit { prefs ->
+            prefs[OTP_PENDING] = false
+            prefs.remove(OTP_PENDING_USERNAME)
         }
     }
 
@@ -347,6 +378,10 @@ class PreferencesManager @Inject constructor(
             prefs.remove(TOKEN_EXPIRES_AT)
             prefs.remove(SESSION_EXPIRES_AT)
             prefs[PASSWORD_REQUIRED] = requirePassword
+            if (!requirePassword) {
+                prefs[OTP_PENDING] = false
+                prefs.remove(OTP_PENDING_USERNAME)
+            }
         }
     }
 

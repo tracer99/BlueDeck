@@ -32,8 +32,8 @@ import javax.inject.Inject
  * This intentionally exposes status only. Remote commands such as lock, unlock,
  * climate, charge start/stop, and seat controls are not available on Android Auto.
  */
-@AndroidEntryPoint
-class BlueDeckCarAppService : CarAppService() {
+@AndroidEntryPoint(CarAppService::class)
+class BlueDeckCarAppService : Hilt_BlueDeckCarAppService() {
     @Inject lateinit var vehicleRepository: VehicleRepository
     @Inject lateinit var preferencesManager: PreferencesManager
 

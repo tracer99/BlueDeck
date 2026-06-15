@@ -68,6 +68,8 @@ class MainActivity : FragmentActivity() {
 
             val isLoggedIn by authViewModel.isLoggedIn.collectAsStateWithLifecycle()
             val loginUiState by authViewModel.loginUiState.collectAsStateWithLifecycle()
+            val otpPending by authViewModel.otpPending.collectAsStateWithLifecycle()
+            val passwordRequired by authViewModel.passwordRequired.collectAsStateWithLifecycle()
             val biometricSessionRecoveryAvailable by authViewModel.biometricSessionRecoveryAvailable.collectAsStateWithLifecycle()
             val themeModeKey by settingsViewModel.themeMode.collectAsStateWithLifecycle()
             val useDynamicColor by settingsViewModel.useDynamicColor.collectAsStateWithLifecycle()
@@ -174,12 +176,15 @@ class MainActivity : FragmentActivity() {
                     }
 
                     false -> {
-                        if (biometricSessionRecoveryAvailable || biometricReauthInProgress) {
+                        if ((biometricSessionRecoveryAvailable || biometricReauthInProgress) && !otpPending) {
                             navigateRoot("biometric_unlock")
                         } else {
                             biometricUnlocked = false
                             biometricReauthInProgress = false
                             navigateRoot("login")
+                            if (otpPending) {
+                                authViewModel.resumePendingOtp()
+                            }
                         }
                     }
 
@@ -193,9 +198,10 @@ class MainActivity : FragmentActivity() {
                         NavHost(
                             navController = navController,
                             startDestination = when {
+                                otpPending && passwordRequired -> "login"
                                 isLoggedIn == true && shouldPromptOnAppOpen && !biometricUnlocked && !persistedBiometricSessionActive -> "biometric_unlock"
                                 isLoggedIn == true -> "dashboard"
-                                biometricSessionRecoveryAvailable -> "biometric_unlock"
+                                biometricSessionRecoveryAvailable && !otpPending -> "biometric_unlock"
                                 else -> "login"
                             }
                         ) {

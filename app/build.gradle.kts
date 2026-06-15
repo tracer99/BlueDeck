@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.serialization)
-    kotlin("kapt")
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -15,8 +15,8 @@ android {
         applicationId = "com.bluedeck"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.5.0"
+        versionCode = 31
+        versionName = "1.6.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -66,7 +66,7 @@ dependencies {
 
     // Hilt DI
     implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)
+    ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
     // Networking
@@ -99,6 +99,6 @@ dependencies {
     testImplementation(libs.junit)
 }
 
-kapt {
-    correctErrorTypes = true
+hilt {
+    enableAggregatingTask = true
 }

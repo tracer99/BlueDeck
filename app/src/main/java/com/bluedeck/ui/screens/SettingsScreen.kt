@@ -60,7 +60,6 @@ fun SettingsScreen(
     val timeFormat by viewModel.timeFormat.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val biometricUnlockMode by viewModel.biometricUnlockMode.collectAsStateWithLifecycle()
-    val stayLoggedIn30Days by viewModel.stayLoggedIn30Days.collectAsStateWithLifecycle()
     val walkAwayLockEnabled by viewModel.walkAwayLockEnabled.collectAsStateWithLifecycle()
     val walkAwayLockDelaySeconds by viewModel.walkAwayLockDelaySeconds.collectAsStateWithLifecycle()
     val walkAwayBluetoothName by viewModel.walkAwayBluetoothName.collectAsStateWithLifecycle()
@@ -345,50 +344,6 @@ fun SettingsScreen(
                         }
                     }
 
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
-
-                    // Stay logged in
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Filled.Timer,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Stay Logged In for 30 Days",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    "Keep the app session open and refresh supported regional tokens when needed",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Switch(
-                            checked = stayLoggedIn30Days,
-                            onCheckedChange = { viewModel.setStayLoggedIn30Days(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                            )
-                        )
-                    }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
 

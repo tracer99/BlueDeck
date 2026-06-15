@@ -10,6 +10,13 @@ import com.bluedeck.data.api.readCanadaHttpBody
 import com.bluedeck.data.api.EuIdentityApiClient
 import com.bluedeck.data.api.KiaUsApiClient
 import com.bluedeck.data.api.Region
+import com.bluedeck.data.auth.CanadaMfaResponses
+import com.bluedeck.data.auth.KiaUsOtpResponses
+import com.bluedeck.data.auth.OtpChallengeUi
+import com.bluedeck.data.auth.OtpDeliveryMethod
+import com.bluedeck.data.auth.OtpRequiredException
+import com.bluedeck.data.auth.OTP_REQUIRED_CODE
+import com.bluedeck.data.auth.PendingOtpChallenge
 import com.bluedeck.data.models.*
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -28,16 +35,6 @@ sealed class Result<out T> {
     data class Success<T>(val data: T) : Result<T>()
     data class Error(val message: String, val code: Int? = null) : Result<Nothing>()
 }
-
-private data class KiaUsOtpChallenge(
-    val username: String,
-    val password: String,
-    val servicePin: String,
-    val otpKey: String,
-    val xid: String,
-    val refreshTokenExpired: Boolean,
-    val destinationLabel: String
-)
 
 @Singleton
 class VehicleRepository @Inject constructor(
@@ -58,7 +55,8 @@ class VehicleRepository @Inject constructor(
     private var auApiClientDeviceId: String? = null
     private var kiaUsApiClient: KiaUsApiClient? = null
     private var kiaUsApiClientDeviceId: String? = null
-    private var pendingKiaUsOtpChallenge: KiaUsOtpChallenge? = null
+    private var pendingOtpChallenge: PendingOtpChallenge? = null
+    private var pendingOtpMessage: String? = null
     private val gson = Gson()
     private val seatConfigurationsByVin = mutableMapOf<String, SeatConfigurations>()
 
@@ -189,6 +187,8 @@ class VehicleRepository @Inject constructor(
                 isCanadaRegion() -> refreshCanadaAccessToken()
                 else -> refreshPasswordBasedSession()
             }
+        } catch (e: OtpRequiredException) {
+            throw e
         } catch (e: Exception) {
             // Do not continue with a known-expired token. That leaves the app half-authenticated:
             // navigation still thinks the user is logged in, but vehicle loading fails and the
@@ -542,8 +542,185 @@ class VehicleRepository @Inject constructor(
         return responseCode != null && responseCode != 0
     }
 
-    private fun canadaOtpRequired(json: JsonObject?): Boolean =
-        json?.objectOrNull("error")?.stringOrNull("errorCode") == "7110"
+    private fun canadaOtpRequired(json: JsonObject?): Boolean = CanadaMfaResponses.isOtpRequired(json)
+
+    private fun canadaOtpMethodCode(method: OtpDeliveryMethod): String = when (method) {
+        OtpDeliveryMethod.EMAIL -> "E"
+        OtpDeliveryMethod.SMS -> "S"
+    }
+
+    private fun canadaAvailableMethods(email: String?, phone: String?): Set<OtpDeliveryMethod> = buildSet {
+        if (!email.isNullOrBlank()) add(OtpDeliveryMethod.EMAIL)
+        if (!phone.isNullOrBlank()) add(OtpDeliveryMethod.SMS)
+        if (isEmpty()) add(OtpDeliveryMethod.EMAIL)
+    }
+
+    private fun canadaDestinationLabel(method: OtpDeliveryMethod, email: String, phone: String?): String = when (method) {
+        OtpDeliveryMethod.EMAIL -> email.let { "email $it" }
+        OtpDeliveryMethod.SMS -> when {
+            CanadaMfaResponses.hasSmsDestination(phone) -> "phone $phone"
+            else -> "your phone"
+        }
+    }
+
+    private suspend fun canadaSendOtp(
+        deviceId: String,
+        userInfoUuid: String,
+        otpEmail: String,
+        phone: String?,
+        method: OtpDeliveryMethod
+    ): Result<String> {
+        val response = getCanadaApiService().sendOtp(
+            deviceId = deviceId,
+            body = mapOf(
+                "otpMethod" to canadaOtpMethodCode(method),
+                "mfaApiCode" to CanadaMfaResponses.MFA_API_CODE,
+                "userAccount" to otpEmail,
+                "userPhone" to if (method == OtpDeliveryMethod.SMS) {
+                    CanadaMfaResponses.smsPhoneForSend(phone)
+                } else {
+                    ""
+                },
+                "userInfoUuid" to userInfoUuid
+            )
+        )
+        val raw = readCanadaHttpBody(response)
+        val json = parseCanadaJsonBody(raw)
+        if (json == null) {
+            return Result.Error(canadaUnreadableBodyMessage(raw, response.code()), response.code())
+        }
+        if (!CanadaMfaResponses.isSuccess(json)) {
+            return Result.Error(canadaErrorMessage(json, "Could not send verification code (${response.code()})"), response.code())
+        }
+        val otpKey = CanadaMfaResponses.parseSendOtpKey(json)
+            ?: return Result.Error("Verification code could not be sent.")
+        return Result.Success(otpKey)
+    }
+
+    private suspend fun startCanadaOtpChallenge(
+        username: String,
+        password: String,
+        servicePin: String,
+        method: OtpDeliveryMethod? = null,
+        fromRefresh: Boolean = false
+    ): Result<Unit> {
+        val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+        val selResponse = getCanadaApiService().selectVerificationMethod(
+            deviceId = deviceId,
+            body = mapOf(
+                "mfaApiCode" to CanadaMfaResponses.MFA_API_CODE,
+                "userAccount" to username
+            )
+        )
+        val selRaw = readCanadaHttpBody(selResponse)
+        val selJson = parseCanadaJsonBody(selRaw)
+        if (selJson == null) {
+            return Result.Error(canadaUnreadableBodyMessage(selRaw, selResponse.code()), selResponse.code())
+        }
+        if (!CanadaMfaResponses.isSuccess(selJson)) {
+            return Result.Error(canadaErrorMessage(selJson, "Could not start verification (${selResponse.code()})"), selResponse.code())
+        }
+        val methods = CanadaMfaResponses.parseVerificationMethods(selJson)
+            ?: return Result.Error("Verification setup did not return contact options.")
+        val email = methods.userAccount ?: methods.email ?: username
+        val available = canadaAvailableMethods(methods.email ?: email, methods.phone)
+        val selected = when {
+            method != null && method in available -> method
+            OtpDeliveryMethod.SMS in available && OtpDeliveryMethod.EMAIL !in available -> OtpDeliveryMethod.SMS
+            OtpDeliveryMethod.EMAIL in available -> OtpDeliveryMethod.EMAIL
+            else -> available.first()
+        }
+        when (val sendResult = canadaSendOtp(
+            deviceId = deviceId,
+            userInfoUuid = methods.userInfoUuid,
+            otpEmail = email,
+            phone = methods.phone,
+            method = selected
+        )) {
+            is Result.Error -> return sendResult
+            is Result.Success -> {
+                pendingOtpChallenge = PendingOtpChallenge.Canada(
+                    username = username,
+                    password = password,
+                    servicePin = servicePin,
+                    destinationLabel = canadaDestinationLabel(selected, email, methods.phone),
+                    availableMethods = available,
+                    selectedMethod = selected,
+                    userInfoUuid = methods.userInfoUuid,
+                    otpKey = sendResult.data,
+                    email = email,
+                    phone = methods.phone
+                )
+                val message = if (fromRefresh) {
+                    "Session expired. A verification code was sent to ${canadaDestinationLabel(selected, email, methods.phone)}."
+                } else {
+                    "A verification code was sent to ${canadaDestinationLabel(selected, email, methods.phone)}. Enter that code below to finish signing in."
+                }
+                pendingOtpMessage = message
+                if (fromRefresh) {
+                    preferencesManager.setOtpPending(username)
+                }
+                return Result.Error(message, OTP_REQUIRED_CODE)
+            }
+            else -> return Result.Error("Could not send verification code.")
+        }
+    }
+
+    private suspend fun loginCanada(
+        username: String,
+        password: String,
+        servicePin: String,
+        fromRefresh: Boolean = false
+    ): Result<Unit> {
+        return try {
+            pendingOtpChallenge = null
+            pendingOtpMessage = null
+            val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+            val response = getCanadaApiService().login(
+                deviceId = deviceId,
+                body = mapOf("loginId" to username, "password" to password)
+            )
+            val raw = readCanadaHttpBody(response)
+            val json = parseCanadaJsonBody(raw)
+            if (json == null) {
+                return Result.Error(canadaUnreadableBodyMessage(raw, response.code()), response.code())
+            }
+            if (!response.isSuccessful && !canadaOtpRequired(json)) {
+                return Result.Error(canadaErrorMessage(json, "Canada login failed (${response.code()})"), response.code())
+            }
+            if (canadaOtpRequired(json)) {
+                return startCanadaOtpChallenge(username, password, servicePin, fromRefresh = fromRefresh)
+            }
+            if (canadaResponseFailed(json)) {
+                return Result.Error(canadaErrorMessage(json, "Canada login failed"))
+            }
+            val token = json.objectOrNull("result")?.objectOrNull("token")
+                ?: return Result.Error("Canada login did not return a token")
+            saveCanadaSession(username, password, servicePin, token)
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Canada login network error")
+        }
+    }
+
+    private suspend fun saveCanadaSession(
+        username: String,
+        password: String,
+        servicePin: String,
+        token: JsonObject
+    ) {
+        preferencesManager.saveSession(
+            accessToken = token.stringOrNull("accessToken").orEmpty(),
+            refreshToken = token.stringOrNull("refreshToken").orEmpty(),
+            username = username,
+            expiresIn = (token.intOrNull("expireIn") ?: 1800).coerceAtLeast(60) - 60,
+            servicePin = servicePin
+        )
+        preferencesManager.clearOtpPending()
+        if (preferencesManager.stayLoggedIn30Days.first()) {
+            secureCredentialsManager.saveCredentials(username, password, servicePin)
+        }
+    }
 
     private fun isCanadaAuthFailure(code: Int, json: JsonObject?): Boolean {
         if (code == 401 || code == 403) return true
@@ -563,7 +740,8 @@ class VehicleRepository @Inject constructor(
             val result = loginCanada(
                 username = savedCredentials.username,
                 password = savedCredentials.password,
-                servicePin = savedCredentials.servicePin
+                servicePin = savedCredentials.servicePin,
+                fromRefresh = true
             )
         ) {
             is Result.Success -> preferencesManager.accessToken.first()
@@ -574,6 +752,9 @@ class VehicleRepository @Inject constructor(
                     throw IllegalStateException("Sign-in succeeded but no access token was saved")
                 }
             is Result.Error -> {
+                if (result.code == OTP_REQUIRED_CODE) {
+                    throw OtpRequiredException(result.message)
+                }
                 preferencesManager.clearSession(requirePassword = true)
                 throw IllegalStateException(result.message)
             }
@@ -595,47 +776,6 @@ class VehicleRepository @Inject constructor(
             return null
         }
         return runCatching { refreshCanadaAccessToken() }.getOrNull()
-    }
-
-    private suspend fun loginCanada(username: String, password: String, servicePin: String): Result<Unit> {
-        return try {
-            val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
-            val response = getCanadaApiService().login(
-                deviceId = deviceId,
-                body = mapOf("loginId" to username, "password" to password)
-            )
-            val raw = readCanadaHttpBody(response)
-            val json = parseCanadaJsonBody(raw)
-            if (json == null) {
-                return Result.Error(canadaUnreadableBodyMessage(raw, response.code()), response.code())
-            }
-            if (!response.isSuccessful) {
-                return Result.Error(canadaErrorMessage(json, "Canada login failed (${response.code()})"), response.code())
-            }
-            if (canadaOtpRequired(json)) {
-                return Result.Error(
-                    "Canada login requires OTP/MFA for this device. Open the official Hyundai/Kia Canada app or web portal once, then try BlueDeck again. OTP entry is scaffolded in the API layer but not exposed in the login screen yet."
-                )
-            }
-            if (canadaResponseFailed(json)) {
-                return Result.Error(canadaErrorMessage(json, "Canada login failed"))
-            }
-            val token = json.objectOrNull("result")?.objectOrNull("token")
-                ?: return Result.Error("Canada login did not return a token")
-            preferencesManager.saveSession(
-                accessToken = token.stringOrNull("accessToken").orEmpty(),
-                refreshToken = token.stringOrNull("refreshToken").orEmpty(),
-                username = username,
-                expiresIn = (token.intOrNull("expireIn") ?: 1800).coerceAtLeast(60) - 60,
-                servicePin = servicePin
-            )
-            if (preferencesManager.stayLoggedIn30Days.first()) {
-                secureCredentialsManager.saveCredentials(username, password, servicePin)
-            }
-            Result.Success(Unit)
-        } catch (e: Exception) {
-            Result.Error(e.message ?: "Canada login network error")
-        }
     }
 
     private suspend fun getCanadaVehicles(): Result<List<Vehicle>> {
@@ -1787,11 +1927,78 @@ class VehicleRepository @Inject constructor(
             expiresIn = expiresIn,
             servicePin = servicePin
         )
+        preferencesManager.clearOtpPending()
+    }
+
+    private suspend fun kiaUsSendOtp(challenge: PendingOtpChallenge.KiaUs): Result<Unit> {
+        val notifyType = KiaUsOtpResponses.notifyType(challenge.selectedMethod)
+        val sendResponse = getKiaUsApiService().sendOtp(
+            otpKey = challenge.otpKey,
+            notifyType = notifyType,
+            xid = challenge.xid
+        )
+        val sendJson = sendResponse.body()
+        if (!sendResponse.isSuccessful || kiaUsStatusFailed(sendJson)) {
+            return Result.Error(
+                kiaUsErrorMessage(sendJson, "Verification code could not be sent (${sendResponse.code()})"),
+                sendResponse.code()
+            )
+        }
+        return Result.Success(Unit)
+    }
+
+    private suspend fun startKiaUsOtpChallenge(
+        username: String,
+        password: String,
+        servicePin: String,
+        otpKey: String,
+        xid: String,
+        json: JsonObject?,
+        method: OtpDeliveryMethod? = null,
+        fromRefresh: Boolean = false
+    ): Result<Unit> {
+        val options = KiaUsOtpResponses.parseContactOptions(json)
+            ?: return Result.Error("Verification setup did not return contact options.")
+        val available = KiaUsOtpResponses.availableMethods(options)
+        val selected = when {
+            method != null && method in available -> method
+            else -> KiaUsOtpResponses.preferredDeliveryMethod(options)
+        }
+        val destination = KiaUsOtpResponses.destinationLabel(selected, options)
+        val challenge = PendingOtpChallenge.KiaUs(
+            username = username,
+            password = password,
+            servicePin = servicePin,
+            destinationLabel = destination,
+            availableMethods = available,
+            selectedMethod = selected,
+            otpKey = otpKey,
+            xid = xid,
+            refreshTokenExpired = options.refreshTokenExpired,
+            email = options.email,
+            phone = options.phone
+        )
+        when (val sendResult = kiaUsSendOtp(challenge)) {
+            is Result.Error -> return sendResult
+            else -> Unit
+        }
+        pendingOtpChallenge = challenge
+        val message = if (fromRefresh) {
+            "Session expired. A verification code was sent to $destination."
+        } else {
+            "A verification code was sent to $destination. Enter that code below to finish signing in."
+        }
+        pendingOtpMessage = message
+        if (fromRefresh) {
+            preferencesManager.setOtpPending(username)
+        }
+        return Result.Error(message, OTP_REQUIRED_CODE)
     }
 
     private suspend fun loginKiaUs(username: String, password: String, servicePin: String): Result<Unit> {
         return try {
-            pendingKiaUsOtpChallenge = null
+            pendingOtpChallenge = null
+            pendingOtpMessage = null
             val response = getKiaUsApiService().authUser(kiaUsLoginBody(username, password))
             val json = response.body()
             val sid = response.headerAny("sid").orEmpty()
@@ -1799,39 +2006,14 @@ class VehicleRepository @Inject constructor(
 
             if (response.isSuccessful && sid.isNotBlank()) {
                 saveKiaUsSession(username, sid, refreshToken, servicePin)
+                preferencesManager.clearOtpPending()
                 return Result.Success(Unit)
             }
 
-            val payload = json?.objectOrNull("payload")
-            val otpKey = payload?.stringOrNull("otpKey")
-            if (response.isSuccessful && !otpKey.isNullOrBlank()) {
+            val otpKey = KiaUsOtpResponses.hasOtpKey(json)
+            if (response.isSuccessful && otpKey != null) {
                 val xid = response.headerAny("xid").orEmpty()
-                val hasEmail = payload.stringOrNull("hasEmail")?.equals("true", ignoreCase = true) == true || payload.intOrNull("hasEmail") == 1
-                val hasPhone = payload.stringOrNull("hasPhone")?.equals("true", ignoreCase = true) == true || payload.intOrNull("hasPhone") == 1
-                val notifyType = if (hasEmail) "EMAIL" else if (hasPhone) "SMS" else "EMAIL"
-                val destination = when (notifyType) {
-                    "EMAIL" -> payload.stringOrNull("email")?.let { "email $it" } ?: "email"
-                    else -> payload.stringOrNull("phone")?.let { "phone $it" } ?: "phone"
-                }
-                val sendResponse = getKiaUsApiService().sendOtp(
-                    otpKey = otpKey,
-                    notifyType = notifyType,
-                    xid = xid
-                )
-                val sendJson = sendResponse.body()
-                if (!sendResponse.isSuccessful || kiaUsStatusFailed(sendJson)) {
-                    return Result.Error(kiaUsErrorMessage(sendJson, "Kia verification code could not be sent (${sendResponse.code()})"), sendResponse.code())
-                }
-                pendingKiaUsOtpChallenge = KiaUsOtpChallenge(
-                    username = username,
-                    password = password,
-                    servicePin = servicePin,
-                    otpKey = otpKey,
-                    xid = xid,
-                    refreshTokenExpired = payload.stringOrNull("rmTokenExpired")?.equals("true", ignoreCase = true) == true || payload.intOrNull("rmTokenExpired") == 1,
-                    destinationLabel = destination
-                )
-                return Result.Error("Kia sent a verification code to $destination. Enter that code below to finish signing in.", 460)
+                return startKiaUsOtpChallenge(username, password, servicePin, otpKey, xid, json)
             }
 
             Result.Error(kiaUsErrorMessage(json, "Kia login failed (${response.code()})"), response.code())
@@ -1840,12 +2022,233 @@ class VehicleRepository @Inject constructor(
         }
     }
 
-    suspend fun completeKiaUsOtpLogin(otpCode: String): Result<Unit> {
-        val challenge = pendingKiaUsOtpChallenge
-            ?: return Result.Error("Kia verification expired. Sign in again to request a new code.", 460)
-        val cleanCode = otpCode.filter { it.isDigit() }
-        if (cleanCode.isBlank()) return Result.Error("Enter the Kia verification code.", 460)
+    fun getOtpChallengeUi(): OtpChallengeUi? {
+        val challenge = pendingOtpChallenge ?: return null
+        return OtpChallengeUi(
+            destinationLabel = challenge.destinationLabel,
+            availableMethods = challenge.availableMethods,
+            selectedMethod = challenge.selectedMethod,
+            supportsTrustDevice = challenge.supportsTrustDevice,
+            rememberDeviceDefault = (challenge as? PendingOtpChallenge.Canada)?.rememberDevice ?: true,
+            message = pendingOtpMessage
+        )
+    }
 
+    suspend fun resumeOtpIfPending(): OtpChallengeUi? {
+        if (!preferencesManager.otpPending.first()) return null
+        val savedCredentials = secureCredentialsManager.getSavedCredentials() ?: return null
+        if (pendingOtpChallenge != null) return getOtpChallengeUi()
+        return when {
+            isCanadaRegion() -> {
+                when (startCanadaOtpChallenge(
+                    username = savedCredentials.username,
+                    password = savedCredentials.password,
+                    servicePin = savedCredentials.servicePin,
+                    fromRefresh = true
+                )) {
+                    is Result.Error -> if (pendingOtpChallenge != null) getOtpChallengeUi() else null
+                    else -> null
+                }
+            }
+            isKiaUsRegion() -> {
+                when (val loginResult = loginKiaUs(
+                    savedCredentials.username,
+                    savedCredentials.password,
+                    savedCredentials.servicePin
+                )) {
+                    is Result.Error -> if (loginResult.code == OTP_REQUIRED_CODE) getOtpChallengeUi() else null
+                    else -> null
+                }
+            }
+            else -> null
+        }
+    }
+
+    suspend fun selectOtpDeliveryMethod(method: OtpDeliveryMethod): Result<Unit> {
+        val challenge = pendingOtpChallenge
+            ?: return Result.Error("Verification expired. Sign in again to request a new code.", OTP_REQUIRED_CODE)
+        if (method !in challenge.availableMethods) {
+            return Result.Error("That delivery method is not available for this account.", OTP_REQUIRED_CODE)
+        }
+        return when (challenge) {
+            is PendingOtpChallenge.KiaUs -> {
+                val updated = challenge.copy(
+                    selectedMethod = method,
+                    destinationLabel = KiaUsOtpResponses.destinationLabel(
+                        method,
+                        KiaUsOtpResponses.ContactOptions(
+                            hasEmail = challenge.availableMethods.contains(OtpDeliveryMethod.EMAIL),
+                            hasPhone = challenge.availableMethods.contains(OtpDeliveryMethod.SMS),
+                            email = challenge.email,
+                            phone = challenge.phone,
+                            refreshTokenExpired = challenge.refreshTokenExpired
+                        )
+                    )
+                )
+                pendingOtpChallenge = updated
+                kiaUsSendOtp(updated).also { result ->
+                    if (result is Result.Success) {
+                        pendingOtpMessage = "A verification code was sent to ${updated.destinationLabel}."
+                    }
+                }
+            }
+            is PendingOtpChallenge.Canada -> {
+                val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+                when (val sendResult = canadaSendOtp(
+                    deviceId = deviceId,
+                    userInfoUuid = challenge.userInfoUuid,
+                    otpEmail = challenge.email,
+                    phone = challenge.phone,
+                    method = method
+                )) {
+                    is Result.Success -> {
+                        pendingOtpChallenge = challenge.copy(
+                            selectedMethod = method,
+                            destinationLabel = canadaDestinationLabel(method, challenge.email, challenge.phone),
+                            otpKey = sendResult.data
+                        )
+                        pendingOtpMessage = "A verification code was sent to ${canadaDestinationLabel(method, challenge.email, challenge.phone)}."
+                        Result.Success(Unit)
+                    }
+                    is Result.Error -> sendResult
+                    else -> Result.Error("Could not send verification code.", OTP_REQUIRED_CODE)
+                }
+            }
+        }
+    }
+
+    suspend fun resendOtp(): Result<Unit> {
+        val challenge = pendingOtpChallenge
+            ?: return Result.Error("Verification expired. Sign in again to request a new code.", OTP_REQUIRED_CODE)
+        return when (challenge) {
+            is PendingOtpChallenge.KiaUs -> kiaUsSendOtp(challenge).also { result ->
+                if (result is Result.Success) {
+                    pendingOtpMessage = "A new verification code was sent to ${challenge.destinationLabel}."
+                }
+            }
+            is PendingOtpChallenge.Canada -> {
+                val otpKey = challenge.otpKey
+                    ?: return Result.Error("Verification is not ready yet. Choose a delivery method first.", OTP_REQUIRED_CODE)
+                val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+                canadaSendOtp(
+                    deviceId = deviceId,
+                    userInfoUuid = challenge.userInfoUuid,
+                    otpEmail = challenge.email,
+                    phone = challenge.phone,
+                    method = challenge.selectedMethod
+                ).let { result ->
+                    when (result) {
+                        is Result.Success -> {
+                            pendingOtpChallenge = challenge.copy(otpKey = result.data)
+                            pendingOtpMessage = "A new verification code was sent to ${challenge.destinationLabel}."
+                            Result.Success(Unit)
+                        }
+                        is Result.Error -> result
+                        else -> Result.Error("Could not resend verification code.", OTP_REQUIRED_CODE)
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun completeOtpLogin(otpCode: String, rememberDevice: Boolean = true): Result<Unit> {
+        val challenge = pendingOtpChallenge
+            ?: return Result.Error("Verification expired. Sign in again to request a new code.", OTP_REQUIRED_CODE)
+        val cleanCode = otpCode.filter { it.isDigit() }
+        if (cleanCode.isBlank()) return Result.Error("Enter the verification code.", OTP_REQUIRED_CODE)
+
+        return when (challenge) {
+            is PendingOtpChallenge.KiaUs -> completeKiaUsOtpLogin(challenge, cleanCode)
+            is PendingOtpChallenge.Canada -> completeCanadaOtpLogin(challenge, cleanCode, rememberDevice)
+        }
+    }
+
+    private suspend fun completeCanadaOtpLogin(
+        challenge: PendingOtpChallenge.Canada,
+        cleanCode: String,
+        rememberDevice: Boolean
+    ): Result<Unit> {
+        val otpKey = challenge.otpKey
+            ?: return Result.Error("Verification is not ready yet. Request a new code.", OTP_REQUIRED_CODE)
+        return try {
+            val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+            val validateResponse = getCanadaApiService().validateOtp(
+                deviceId = deviceId,
+                body = mapOf(
+                    "otpNo" to cleanCode,
+                    "userAccount" to challenge.username,
+                    "otpKey" to otpKey,
+                    "mfaApiCode" to CanadaMfaResponses.MFA_API_CODE
+                )
+            )
+            val validateRaw = readCanadaHttpBody(validateResponse)
+            val validateJson = parseCanadaJsonBody(validateRaw)
+            if (validateJson == null) {
+                return Result.Error(canadaUnreadableBodyMessage(validateRaw, validateResponse.code()), validateResponse.code())
+            }
+            val errorCode = validateJson.objectOrNull("error")?.stringOrNull("errorCode")
+            if (!CanadaMfaResponses.isSuccess(validateJson)) {
+                val message = when (errorCode) {
+                    CanadaMfaResponses.ERROR_OTP_FAILED -> "Invalid verification code. Check the code and try again."
+                    else -> canadaErrorMessage(validateJson, "Verification failed (${validateResponse.code()})")
+                }
+                return Result.Error(message, validateResponse.code())
+            }
+            val validated = CanadaMfaResponses.parseValidatedOtp(validateJson)
+                ?: return Result.Error("Verification did not return a validation key.")
+            if (!validated.verified) {
+                return Result.Error("Invalid verification code. Check the code and try again.", OTP_REQUIRED_CODE)
+            }
+
+            val tokenResponse = getCanadaApiService().generateMfaToken(
+                deviceId = deviceId,
+                body = mapOf(
+                    "userAccount" to challenge.username,
+                    "otpEmail" to challenge.email,
+                    "mfaApiCode" to CanadaMfaResponses.MFA_API_CODE,
+                    "otpValidationKey" to validated.otpValidationKey,
+                    "mfaYn" to if (rememberDevice) "Y" else "N"
+                )
+            )
+            val tokenRaw = readCanadaHttpBody(tokenResponse)
+            val tokenJson = parseCanadaJsonBody(tokenRaw)
+            if (tokenJson == null) {
+                return Result.Error(canadaUnreadableBodyMessage(tokenRaw, tokenResponse.code()), tokenResponse.code())
+            }
+            if (!CanadaMfaResponses.isSuccess(tokenJson)) {
+                return Result.Error(canadaErrorMessage(tokenJson, "Login completion failed (${tokenResponse.code()})"), tokenResponse.code())
+            }
+            val mfaToken = CanadaMfaResponses.parseMfaToken(tokenJson)
+                ?: tokenJson.objectOrNull("result")?.objectOrNull("token")?.let { tokenObj ->
+                    CanadaMfaResponses.MfaToken(
+                        accessToken = tokenObj.stringOrNull("accessToken").orEmpty(),
+                        refreshToken = tokenObj.stringOrNull("refreshToken").orEmpty(),
+                        expireIn = tokenObj.intOrNull("expireIn") ?: 86400
+                    )
+                }
+                ?: return Result.Error("Login completion did not return a token.")
+            saveCanadaSession(
+                username = challenge.username,
+                password = challenge.password,
+                servicePin = challenge.servicePin,
+                token = JsonObject().apply {
+                    addProperty("accessToken", mfaToken.accessToken)
+                    addProperty("refreshToken", mfaToken.refreshToken)
+                    addProperty("expireIn", mfaToken.expireIn)
+                }
+            )
+            pendingOtpChallenge = null
+            pendingOtpMessage = null
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Verification network error. Check your connection.")
+        }
+    }
+
+    private suspend fun completeKiaUsOtpLogin(
+        challenge: PendingOtpChallenge.KiaUs,
+        cleanCode: String
+    ): Result<Unit> {
         return try {
             val verifyResponse = getKiaUsApiService().verifyOtp(
                 otpKey = challenge.otpKey,
@@ -1854,13 +2257,13 @@ class VehicleRepository @Inject constructor(
             )
             val verifyJson = verifyResponse.body()
             if (!verifyResponse.isSuccessful || kiaUsStatusFailed(verifyJson)) {
-                return Result.Error(kiaUsErrorMessage(verifyJson, "Kia verification failed (${verifyResponse.code()})"), verifyResponse.code())
+                return Result.Error(kiaUsErrorMessage(verifyJson, "Verification failed (${verifyResponse.code()})"), verifyResponse.code())
             }
 
             val sid = verifyResponse.headerAny("sid").orEmpty()
             val refreshToken = verifyResponse.headerAny("rmtoken").orEmpty()
             if (sid.isBlank() || refreshToken.isBlank()) {
-                return Result.Error("Kia verification succeeded but no session token was returned.")
+                return Result.Error("Verification succeeded but no session token was returned.")
             }
 
             val completeResponse = getKiaUsApiService().authUser(
@@ -1871,7 +2274,7 @@ class VehicleRepository @Inject constructor(
             val completeJson = completeResponse.body()
             val finalSid = completeResponse.headerAny("sid") ?: sid
             if (!completeResponse.isSuccessful || finalSid.isBlank() || kiaUsStatusFailed(completeJson)) {
-                return Result.Error(kiaUsErrorMessage(completeJson, "Kia login completion failed (${completeResponse.code()})"), completeResponse.code())
+                return Result.Error(kiaUsErrorMessage(completeJson, "Login completion failed (${completeResponse.code()})"), completeResponse.code())
             }
 
             saveKiaUsSession(
@@ -1880,10 +2283,12 @@ class VehicleRepository @Inject constructor(
                 refreshToken = refreshToken,
                 servicePin = challenge.servicePin
             )
-            pendingKiaUsOtpChallenge = null
+            pendingOtpChallenge = null
+            pendingOtpMessage = null
+            preferencesManager.clearOtpPending()
             Result.Success(Unit)
         } catch (e: Exception) {
-            Result.Error(e.message ?: "Kia verification network error. Check your connection.")
+            Result.Error(e.message ?: "Verification network error. Check your connection.")
         }
     }
 
@@ -1899,9 +2304,21 @@ class VehicleRepository @Inject constructor(
         val sid = response.headerAny("sid").orEmpty()
         val nextRefreshToken = response.headerAny("rmtoken") ?: refreshToken
         if (!response.isSuccessful || sid.isBlank() || kiaUsStatusFailed(json)) {
-            val payload = json?.objectOrNull("payload")
-            if (payload?.stringOrNull("otpKey") != null) {
-                throw IllegalStateException("Kia requires a new verification code. Please sign in again.")
+            val otpKey = KiaUsOtpResponses.hasOtpKey(json)
+            if (otpKey != null) {
+                val servicePin = getServicePin(required = false)
+                when (startKiaUsOtpChallenge(
+                    username = username,
+                    password = password,
+                    servicePin = servicePin,
+                    otpKey = otpKey,
+                    xid = response.headerAny("xid").orEmpty(),
+                    json = json,
+                    fromRefresh = true
+                )) {
+                    is Result.Error -> throw OtpRequiredException(pendingOtpMessage ?: "Verification code required.")
+                    else -> throw OtpRequiredException("Verification code required.")
+                }
             }
             throw IllegalStateException(kiaUsErrorMessage(json, "Kia token refresh failed (${response.code()})"))
         }
@@ -2176,6 +2593,15 @@ class VehicleRepository @Inject constructor(
                 )
                 Result.Success(Unit)
             } else {
+                val errorBody = response.errorBody()?.string().orEmpty()
+                if (errorBody.contains("otpKey", ignoreCase = true) ||
+                    errorBody.contains("otp", ignoreCase = true) && errorBody.contains("verify", ignoreCase = true)
+                ) {
+                    return Result.Error(
+                        "Hyundai login requires device verification that BlueDeck does not support yet for US Hyundai. Try the official MyHyundai app once, then sign in again.",
+                        response.code()
+                    )
+                }
                 Result.Error(
                     when (response.code()) {
                         401 -> "Invalid username or password"
@@ -2192,6 +2618,11 @@ class VehicleRepository @Inject constructor(
     }
 
     suspend fun logout(requirePassword: Boolean = true) {
+        pendingOtpChallenge = null
+        pendingOtpMessage = null
+        if (requirePassword) {
+            preferencesManager.clearOtpPending()
+        }
         preferencesManager.clearSession(requirePassword = requirePassword)
         apiClient = null
         apiClientRegion = null
@@ -2207,7 +2638,6 @@ class VehicleRepository @Inject constructor(
         auApiClientDeviceId = null
         kiaUsApiClient = null
         kiaUsApiClientDeviceId = null
-        pendingKiaUsOtpChallenge = null
     }
 
     // ─── Vehicles ──────────────────────────────────────────────────────────────

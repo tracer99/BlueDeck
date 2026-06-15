@@ -8,6 +8,8 @@ BlueDeck is a fork of the open-source **BlueBridge for Android** project, origin
 
 ## Features
 
+Notice about features: I am a single developer with a Hyundai in Canada. So Hyundai ownsers in Canada are more likely to have a good experience than any other brand in any other region. Because Hyundai has decided to implement completely different APIs for every region with slightly different features and capabilities, this makes it challenging. Please file bug reports in GibHub if you have any issues and I'll try to address them.
+
 - 🔒 **Lock & Unlock** doors remotely
 - 🚗 **Remote Start / Stop** engine with full climate pre-configuration
 - ❄️ **Climate Control** — temperature, defrost, heated steering wheel, seat heat levels
@@ -31,12 +33,18 @@ BlueDeck is a fork of the open-source **BlueBridge for Android** project, origin
 ## Setup
 
 1. Clone or unzip this project
-2. Open the project root folder in **Android Studio**
-3. Wait for Gradle to sync and download dependencies (~2–3 min first time)
+2. Open the **`BlueDeck` project root** folder in **Android Studio** (the directory that contains `settings.gradle.kts`, not a parent folder)
+3. Wait for Gradle to sync and download dependencies (~2–3 min first time). The repo includes the Gradle wrapper (`gradlew` / `gradlew.bat`); use **File → Sync Project with Gradle Files** if sync does not start automatically.
 4. Connect an Android device or start an emulator
-5. Click **Run ▶**
+5. Select the **BlueDeck** run configuration in the toolbar, then click **Run ▶**
 6. Select your **Region & Brand** on the login screen
 7. Sign in with your existing Bluelink / Kia Connect email and password
+
+If **Run** is grayed out after a successful build:
+
+- Confirm the run configuration is **BlueDeck** (module `:app`) via the dropdown next to the Run button → **Edit Configurations…**
+- Use **File → Sync Project with Gradle Files**, then **File → Invalidate Caches → Invalidate and Restart**
+- Check **File → Project Structure → Project** has an Android SDK selected (not “No SDK”)
 
 
 
@@ -185,8 +193,9 @@ Canada uses the Hyundai/Kia TODS web API rather than the USA mobile API. BlueDec
 
 Implemented Canadian flows:
 
-- login through `/v2/login`
-- stable generated `Deviceid` storage to reduce repeat MFA prompts
+- login through `/v2/login` with full MFA when the server returns error `7110` for a new or untrusted device
+- select verification method (email or SMS when available), enter the 6-digit code on the login screen, and optionally trust this device for 90 days
+- stable generated `Deviceid` storage (same ID reused across sessions to honor device trust)
 - vehicle list through `/vhcllst`
 - cached and live status through `/lstvhclsts` and `/rltmvhclsts`
 - PIN verification through `/vrfypin` before protected commands
@@ -194,7 +203,17 @@ Implemented Canadian flows:
 - cabin climate start/stop through `/rmtstrt`, `/rmtstp`, `/evc/rfon`, and `/evc/rfoff`
 - EV charge start/stop through `/evc/rcstrt` and `/evc/rcstp`
 
-Canadian OTP/MFA endpoints are present in the API layer, but the login screen does not yet expose an OTP entry flow. If the server returns an OTP-required response for a new device, BlueDeck shows a clear message asking the user to authenticate once in the official Canadian app or web portal before trying again.
+### Login verification (2FA) by region
+
+| Region | Device verification at login |
+|--------|------------------------------|
+| USA — Kia | Email or SMS OTP when Kia requests device trust |
+| Canada — Hyundai / Kia / Genesis | Email or SMS MFA for new devices (`7110`) |
+| USA — Hyundai | Standard password login (no OTP in current telematics API) |
+| Europe | Refresh-token or password login (no device MFA step) |
+| Australia / New Zealand | Standard OAuth sign-in (no device MFA step) |
+
+The 4-digit **Bluelink PIN** collected at login is for remote commands (lock, climate, etc.), not login 2FA.
 
 Currently not mapped for Canada: horn/lights, vehicle location, and charge-target editing.
 
