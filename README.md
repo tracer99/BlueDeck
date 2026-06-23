@@ -4,11 +4,11 @@ An unofficial, open-source Android app for controlling Hyundai and Kia vehicles 
 
 ## Fork attribution
 
-BlueDeck is a fork of the open-source **BlueBridge for Android** project, originally created by **[Nelwyn99](https://github.com/Nelwyn99)**. This fork is maintained separately at [tracer99/BlueDeck](https://github.com/tracer99/BlueDeck) to evolve features, UX, and release cadence in a different direction. It is not affiliated with the upstream BlueBridge project, Hyundai Motor Company, or Kia Corporation. See [NOTICE](NOTICE), [LICENSE](LICENSE), and [CHANGELOG](CHANGELOG.md) for release history.
+BlueDeck is a fork of the discontinued, open-source **BlueBridge for Android** project, originally created by **[Nelwyn99](https://github.com/Nelwyn99)**. This fork is maintained separately at [tracer99/BlueDeck](https://github.com/tracer99/BlueDeck) to evolve features, UX, and release cadence in a different direction. It is not affiliated with the original BlueBridge project, Hyundai Motor Company, or Kia Corporation. See [NOTICE](NOTICE), [LICENSE](LICENSE), and [CHANGELOG](CHANGELOG.md) for release history.
 
 ## Features
 
-Notice about features: I am a single developer with a Hyundai in Canada. So Hyundai ownsers in Canada are more likely to have a good experience than any other brand in any other region. Because Hyundai has decided to implement completely different APIs for every region with slightly different features and capabilities, this makes it challenging. Please file bug reports in GibHub if you have any issues and I'll try to address them.
+Notice about features: I am a single developer with a Hyundai in Canada. So Hyundai ownsers in Canada are more likely to have a good experience than any other brand in any other region. Because Hyundai has decided to implement different APIs for every region with slightly different features and capabilities, this makes it challenging. Please file bug reports in GibHub if you have any issues and I'll try to address them.
 
 - 🔒 **Lock & Unlock** doors remotely
 - 🚗 **Remote Start / Stop** engine with full climate pre-configuration
