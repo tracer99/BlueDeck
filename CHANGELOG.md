@@ -13,6 +13,13 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.8.0] - 2026-07-14
+
+### Added
+
+- GitHub Actions release workflow: pushing a `vX.Y.Z` tag builds a signed release APK and publishes it on the GitHub Releases page.
+- Optional CI signing via `KEYSTORE_*` / `KEY_*` environment variables (used by the release workflow).
+
 ## [1.7.1] - 2026-06-15
 
 ### Changed

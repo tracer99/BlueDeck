@@ -256,6 +256,44 @@ app/
 - Use a physical device for best testing of widgets, biometrics, and background command behavior.
 - Some emulators do not fully match real launcher widget sizing behavior.
 
+## Releasing
+
+GitHub Releases are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml) when you push a version tag.
+
+### One-time setup (signing secrets)
+
+Create a release keystore (keep it safe; use the same key for all future updates):
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias bluedeck \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Encode it and add these repository secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|--------|--------|
+| `KEYSTORE_BASE64` | `base64 -w0 release.keystore` (macOS: `base64 -i release.keystore`) |
+| `KEYSTORE_PASSWORD` | Keystore password |
+| `KEY_ALIAS` | Key alias (e.g. `bluedeck`) |
+| `KEY_PASSWORD` | Key password |
+
+Do not commit the keystore; `*.keystore` / `*.jks` are already gitignored.
+
+### Publish a release
+
+1. On `master` (or your integration branch), confirm `versionName` / `versionCode` in `app/build.gradle.kts` and the matching `CHANGELOG.md` section are updated.
+2. Tag and push (tag must match `versionName`, e.g. `1.8.0` → `v1.8.0`):
+
+```bash
+git tag v1.8.0
+git push origin v1.8.0
+```
+
+3. The workflow builds a signed APK and attaches `BlueDeck-1.8.0.apk` to a GitHub Release, with notes from the changelog section.
+
+Local unsigned release builds still work without those env vars (`./gradlew assembleRelease`). To sign locally, set `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`.
+
 ## Known Limitations
 
 - Hyundai/Kia APIs are unofficial and may change without notice.

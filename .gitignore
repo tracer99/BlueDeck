@@ -76,3 +76,7 @@ Thumbs.db
 *.swp
 *~
 *.orig
+
+# Local signing credentials (generated)
+release.signing.env
+
