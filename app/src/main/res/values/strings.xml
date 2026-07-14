@@ -39,4 +39,6 @@
     <string name="widget_climate_description">One-tap cabin climate widget</string>
     <string name="widget_refresh_description">One-tap vehicle status refresh widget</string>
     <string name="widget_controls_description">Compact lock and unlock controls widget</string>
+    <string name="google_drive_web_client_id">YOUR_WEB_CLIENT_ID</string>
+    <string name="obd_diagnostics">OBD Diagnostics</string>
 </resources>

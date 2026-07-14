@@ -13,6 +13,28 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.8.0] - 2026-07-14
+
+### Added
+
+- GitHub Actions release workflow: pushing a `vX.Y.Z` tag builds a signed release APK and publishes it on the GitHub Releases page.
+- Optional CI signing via `KEYSTORE_*` / `KEY_*` environment variables (used by the release workflow).
+
+## [1.7.1] - 2026-06-15
+
+### Changed
+
+- Migrated build to Android Gradle Plugin 9 defaults: built-in Kotlin, new DSL, and removal of legacy `gradle.properties` opt-outs.
+- Upgraded Kotlin to 2.3.0 and KSP to 2.3.4 for AGP 9 built-in Kotlin compatibility (Hilt/Room annotation processing).
+
+## [1.7.0] - 2026-06-15
+
+### Added
+
+- OBD2 driving logs: pair Bluetooth Classic or Wi-Fi ELM327 scanners and record Hyundai/Kia EV extended PIDs while driving (12V aux, traction SOC/SOH, battery temps, heater state, cell voltages, motor RPM, brake/headlight status when supported).
+- OBD diagnostics screen with live metrics, session history, CSV export, and configurable log retention (days and max storage).
+- Optional Google Drive sync for OBD session CSV uploads.
+
 ## [1.6.5] - 2026-06-14
 
 ### Changed

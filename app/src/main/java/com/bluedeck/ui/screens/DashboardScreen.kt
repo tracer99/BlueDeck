@@ -81,6 +81,7 @@ fun DashboardScreen(
     onNavigateToSurroundView: () -> Unit,
     onNavigateToSeatPresets: () -> Unit,
     onNavigateToDigitalKey: () -> Unit,
+    onNavigateToObd: () -> Unit = {},
     onLogout: () -> Unit
 ) {
     val vehicles by vehicleViewModel.vehicles.collectAsStateWithLifecycle()
@@ -396,7 +397,8 @@ fun DashboardScreen(
                             onLocation = onNavigateToLocation,
                             onDriverProfiles = onNavigateToDriverProfiles,
                             onDigitalKey = onNavigateToDigitalKey,
-                            onValetMode = onNavigateToValetMode
+                            onValetMode = onNavigateToValetMode,
+                            onObd = onNavigateToObd
                         )
                     }
                 }
@@ -2196,18 +2198,29 @@ fun FeatureTilesGrid(
     onLocation: () -> Unit,
     onDriverProfiles: () -> Unit,
     onDigitalKey: () -> Unit,
-    onValetMode: () -> Unit
+    onValetMode: () -> Unit,
+    onObd: () -> Unit
 ) {
     val showLocation = featureCaps?.showLocation != false
     val showDigitalKey = featureCaps?.showDigitalKey != false
     val showValet = featureCaps?.showValetMode == true
-    if (!showLocation && !showDigitalKey && !showValet) return
+    if (!showLocation && !showDigitalKey && !showValet) {
+        // Still show OBD row
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            DashboardQuickActionButton(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Filled.Speed,
+                label = "OBD Logs",
+                tint = MaterialTheme.colorScheme.primary,
+                onClick = onObd,
+                compact = true
+            )
             if (showLocation) {
                 DashboardQuickActionButton(
                     modifier = Modifier.weight(1f),

@@ -2,6 +2,7 @@ package com.bluedeck.data.repository
 
 import com.bluedeck.data.models.CommandHistoryEntry
 import com.bluedeck.data.models.WidgetVehicleSnapshot
+import com.bluedeck.data.obd.ObdTransportType
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
@@ -83,6 +84,19 @@ class PreferencesManager @Inject constructor(
         val EU_DEVICE_REGION = stringPreferencesKey("eu_device_region")
         val AU_DEVICE_ID = stringPreferencesKey("au_device_id")
         val KIA_US_DEVICE_ID = stringPreferencesKey("kia_us_device_id")
+        val OBD_TRANSPORT_TYPE = stringPreferencesKey("obd_transport_type")
+        val OBD_BLUETOOTH_ADDRESS = stringPreferencesKey("obd_bluetooth_address")
+        val OBD_BLUETOOTH_NAME = stringPreferencesKey("obd_bluetooth_name")
+        val OBD_WIFI_HOST = stringPreferencesKey("obd_wifi_host")
+        val OBD_WIFI_PORT = intPreferencesKey("obd_wifi_port")
+        val OBD_PROFILE_ID = stringPreferencesKey("obd_profile_id")
+        val OBD_SAMPLE_INTERVAL_SECONDS = intPreferencesKey("obd_sample_interval_seconds")
+        val OBD_AUTO_CONNECT = booleanPreferencesKey("obd_auto_connect")
+        val OBD_AUTO_START_LOGGING = booleanPreferencesKey("obd_auto_start_logging")
+        val OBD_LOG_RETENTION_DAYS = intPreferencesKey("obd_log_retention_days")
+        val OBD_LOG_MAX_STORAGE_MB = intPreferencesKey("obd_log_max_storage_mb")
+        val OBD_DRIVE_SYNC_ENABLED = booleanPreferencesKey("obd_drive_sync_enabled")
+        val OBD_DRIVE_LAST_SYNC_AT = longPreferencesKey("obd_drive_last_sync_at")
         const val THIRTY_DAYS_MS = 30L * 24L * 60L * 60L * 1000L
     }
 
@@ -194,6 +208,58 @@ class PreferencesManager @Inject constructor(
     val walkAwayBluetoothName: Flow<String?> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[WALK_AWAY_BLUETOOTH_NAME] }
+
+    val obdTransportType: Flow<String> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_TRANSPORT_TYPE] ?: ObdTransportType.BLUETOOTH.name }
+
+    val obdBluetoothAddress: Flow<String?> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_BLUETOOTH_ADDRESS] }
+
+    val obdBluetoothName: Flow<String?> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_BLUETOOTH_NAME] }
+
+    val obdWifiHost: Flow<String> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_WIFI_HOST] ?: "192.168.0.10" }
+
+    val obdWifiPort: Flow<Int> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_WIFI_PORT] ?: 35000 }
+
+    val obdProfileId: Flow<String> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_PROFILE_ID] ?: "KONA_NIRO_64" }
+
+    val obdSampleIntervalSeconds: Flow<Int> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { (it[OBD_SAMPLE_INTERVAL_SECONDS] ?: 10).coerceIn(5, 60) }
+
+    val obdAutoConnect: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_AUTO_CONNECT] ?: false }
+
+    val obdAutoStartLogging: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_AUTO_START_LOGGING] ?: false }
+
+    val obdLogRetentionDays: Flow<Int> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_LOG_RETENTION_DAYS] ?: 30 }
+
+    val obdLogMaxStorageMb: Flow<Int> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_LOG_MAX_STORAGE_MB] ?: 100 }
+
+    val obdDriveSyncEnabled: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_DRIVE_SYNC_ENABLED] ?: false }
+
+    val obdDriveLastSyncAt: Flow<Long> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[OBD_DRIVE_LAST_SYNC_AT] ?: 0L }
 
     val defaultClimateTemp: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -472,6 +538,63 @@ class PreferencesManager @Inject constructor(
             prefs.remove(WALK_AWAY_BLUETOOTH_ADDRESS)
             prefs[WALK_AWAY_LOCK_ENABLED] = false
         }
+    }
+
+    suspend fun setObdTransportType(type: ObdTransportType) {
+        dataStore.edit { it[OBD_TRANSPORT_TYPE] = type.name }
+    }
+
+    suspend fun setObdBluetoothDevice(name: String, address: String) {
+        dataStore.edit { prefs ->
+            prefs[OBD_BLUETOOTH_NAME] = name.ifBlank { "OBD Adapter" }
+            prefs[OBD_BLUETOOTH_ADDRESS] = address
+        }
+    }
+
+    suspend fun clearObdBluetoothDevice() {
+        dataStore.edit { prefs ->
+            prefs.remove(OBD_BLUETOOTH_NAME)
+            prefs.remove(OBD_BLUETOOTH_ADDRESS)
+        }
+    }
+
+    suspend fun setObdWifiEndpoint(host: String, port: Int) {
+        dataStore.edit { prefs ->
+            prefs[OBD_WIFI_HOST] = host.ifBlank { "192.168.0.10" }
+            prefs[OBD_WIFI_PORT] = port.coerceIn(1, 65535)
+        }
+    }
+
+    suspend fun setObdProfileId(profileId: String) {
+        dataStore.edit { it[OBD_PROFILE_ID] = profileId }
+    }
+
+    suspend fun setObdSampleIntervalSeconds(seconds: Int) {
+        dataStore.edit { it[OBD_SAMPLE_INTERVAL_SECONDS] = seconds.coerceIn(5, 60) }
+    }
+
+    suspend fun setObdAutoConnect(enabled: Boolean) {
+        dataStore.edit { it[OBD_AUTO_CONNECT] = enabled }
+    }
+
+    suspend fun setObdAutoStartLogging(enabled: Boolean) {
+        dataStore.edit { it[OBD_AUTO_START_LOGGING] = enabled }
+    }
+
+    suspend fun setObdLogRetentionDays(days: Int) {
+        dataStore.edit { it[OBD_LOG_RETENTION_DAYS] = days.coerceAtLeast(0) }
+    }
+
+    suspend fun setObdLogMaxStorageMb(mb: Int) {
+        dataStore.edit { it[OBD_LOG_MAX_STORAGE_MB] = mb.coerceAtLeast(0) }
+    }
+
+    suspend fun setObdDriveSyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[OBD_DRIVE_SYNC_ENABLED] = enabled }
+    }
+
+    suspend fun setObdDriveLastSyncAt(timestamp: Long) {
+        dataStore.edit { it[OBD_DRIVE_LAST_SYNC_AT] = timestamp }
     }
 
     suspend fun setDefaultClimateTemp(temp: String) {

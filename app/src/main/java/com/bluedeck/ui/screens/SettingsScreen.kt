@@ -51,6 +51,7 @@ import com.bluedeck.widget.VehicleWidgetProvider
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onLogout: () -> Unit,
+    onNavigateToObd: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val region by viewModel.region.collectAsStateWithLifecycle()
@@ -431,6 +432,15 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            // ── OBD Scanner ────────────────────────────────────────────────────
+            ObdScannerSettingsSection()
+            TextButton(
+                onClick = onNavigateToObd,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            ) {
+                Text("Open OBD Diagnostics")
             }
 
             // ── Automation ─────────────────────────────────────────────────────

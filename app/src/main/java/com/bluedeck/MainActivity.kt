@@ -29,6 +29,7 @@ import com.bluedeck.ui.screens.DigitalKeyScreen
 import com.bluedeck.ui.screens.DriverProfilesScreen
 import com.bluedeck.ui.screens.EVChargingScreen
 import com.bluedeck.ui.screens.LocationScreen
+import com.bluedeck.ui.screens.ObdDiagnosticsScreen
 import com.bluedeck.ui.screens.LoginScreen
 import com.bluedeck.ui.screens.RemoteStartScreen
 import com.bluedeck.ui.screens.SeatClimatePresetsScreen
@@ -256,6 +257,7 @@ class MainActivity : FragmentActivity() {
                                     onNavigateToSurroundView = { navController.navigate("surround_view") },
                                     onNavigateToSeatPresets = { navController.navigate("seat_presets") },
                                     onNavigateToDigitalKey = { navController.navigate("digital_key") },
+                                    onNavigateToObd = { navController.navigate("obd_diagnostics") },
                                     onLogout = { authViewModel.logout() }
                                 )
                             }
@@ -277,7 +279,8 @@ class MainActivity : FragmentActivity() {
                             composable("settings") {
                                 SettingsScreen(
                                     onNavigateBack = { navController.popBackStack() },
-                                    onLogout = { authViewModel.logout() }
+                                    onLogout = { authViewModel.logout() },
+                                    onNavigateToObd = { navController.navigate("obd_diagnostics") }
                                 )
                             }
 
@@ -332,6 +335,13 @@ class MainActivity : FragmentActivity() {
 
                             composable("digital_key") {
                                 DigitalKeyScreen(
+                                    vehicleViewModel = vehicleViewModel,
+                                    onNavigateBack = { navController.popBackStack() }
+                                )
+                            }
+
+                            composable("obd_diagnostics") {
+                                ObdDiagnosticsScreen(
                                     vehicleViewModel = vehicleViewModel,
                                     onNavigateBack = { navController.popBackStack() }
                                 )
