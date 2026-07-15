@@ -13,6 +13,17 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.9.0] - 2026-07-14
+
+### Changed
+
+- Replaced the placeholder launcher and splash icons with the BlueDeck brand logo (adaptive icon + splash screen).
+- Updated Jetpack Compose BOM to 2025.05.01 for the Compose Autofill `ContentType` API.
+
+### Fixed
+
+- Login email and password fields now expose Android Autofill content types so password managers (e.g. 1Password) can offer credentials on focus.
+
 ## [1.8.0] - 2026-07-14
 
 ### Added

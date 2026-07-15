@@ -23,10 +23,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.platform.LocalAutofillManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +42,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.bluedeck.data.api.Region
 import com.bluedeck.data.auth.OtpDeliveryMethod
+import com.bluedeck.ui.components.credentialAutofill
 import com.bluedeck.ui.theme.*
 import com.bluedeck.viewmodel.AuthViewModel
 
@@ -55,6 +58,7 @@ fun LoginScreen(
     val otpPending by authViewModel.otpPending.collectAsStateWithLifecycle()
     val otpPendingUsername by authViewModel.otpPendingUsername.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
+    val autofillManager = LocalAutofillManager.current
     val context = LocalContext.current
     val activity = remember(context) { context.findFragmentActivity() }
     val scrollState = rememberScrollState()
@@ -121,7 +125,11 @@ fun LoginScreen(
     }
 
     LaunchedEffect(uiState.success) {
-        if (uiState.success) onLoginSuccess()
+        if (uiState.success) {
+            // Offer to save/update credentials in the system password manager.
+            autofillManager?.commit()
+            onLoginSuccess()
+        }
     }
 
     LaunchedEffect(biometricLoginAvailable) {
@@ -289,7 +297,9 @@ fun LoginScreen(
                     onNext = { focusManager.moveFocus(FocusDirection.Down) }
                 ),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .credentialAutofill(ContentType.Username + ContentType.EmailAddress),
                 colors = loginFieldColors()
             )
 
@@ -325,7 +335,9 @@ fun LoginScreen(
                     }
                 ),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .credentialAutofill(ContentType.Password),
                 colors = loginFieldColors()
             )
 
@@ -434,6 +446,7 @@ fun LoginScreen(
                             .fillMaxWidth()
                             .bringIntoViewRequester(bringOtpIntoView)
                             .focusRequester(otpFocusRequester)
+                            .credentialAutofill(ContentType.SmsOtpCode)
                             .onFocusEvent { focusState ->
                                 if (focusState.isFocused) {
                                     coroutineScope.launch { bringOtpIntoView.bringIntoView() }
