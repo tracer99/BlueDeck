@@ -32,11 +32,12 @@ import com.bluedeck.ui.screens.LocationScreen
 import com.bluedeck.ui.screens.ObdDiagnosticsScreen
 import com.bluedeck.ui.screens.LoginScreen
 import com.bluedeck.ui.screens.RemoteStartScreen
-import com.bluedeck.ui.screens.SeatClimatePresetsScreen
+import com.bluedeck.ui.screens.ClimatePresetsScreen
 import com.bluedeck.ui.screens.SettingsScreen
 import com.bluedeck.ui.screens.StatusScreen
 import com.bluedeck.ui.screens.SurroundViewScreen
 import com.bluedeck.ui.screens.ValetModeScreen
+import com.bluedeck.ui.components.ServicePinPromptDialog
 import com.bluedeck.ui.theme.BlueDeckTheme
 import com.bluedeck.ui.theme.ThemeMode
 import com.bluedeck.viewmodel.AuthViewModel
@@ -72,6 +73,7 @@ class MainActivity : FragmentActivity() {
             val otpPending by authViewModel.otpPending.collectAsStateWithLifecycle()
             val passwordRequired by authViewModel.passwordRequired.collectAsStateWithLifecycle()
             val biometricSessionRecoveryAvailable by authViewModel.biometricSessionRecoveryAvailable.collectAsStateWithLifecycle()
+            val servicePinPrompt by vehicleViewModel.servicePinPrompt.collectAsStateWithLifecycle()
             val themeModeKey by settingsViewModel.themeMode.collectAsStateWithLifecycle()
             val useDynamicColor by settingsViewModel.useDynamicColor.collectAsStateWithLifecycle()
             val themeMode = ThemeMode.fromKey(themeModeKey)
@@ -255,7 +257,7 @@ class MainActivity : FragmentActivity() {
                                     onNavigateToValetMode = { navController.navigate("valet_mode") },
                                     onNavigateToDriverProfiles = { navController.navigate("driver_profiles") },
                                     onNavigateToSurroundView = { navController.navigate("surround_view") },
-                                    onNavigateToSeatPresets = { navController.navigate("seat_presets") },
+                                    onNavigateToSeatPresets = { navController.navigate("climate_presets") },
                                     onNavigateToDigitalKey = { navController.navigate("digital_key") },
                                     onNavigateToObd = { navController.navigate("obd_diagnostics") },
                                     onLogout = { authViewModel.logout() }
@@ -326,8 +328,8 @@ class MainActivity : FragmentActivity() {
                                 )
                             }
 
-                            composable("seat_presets") {
-                                SeatClimatePresetsScreen(
+                            composable("climate_presets") {
+                                ClimatePresetsScreen(
                                     vehicleViewModel = vehicleViewModel,
                                     onNavigateBack = { navController.popBackStack() }
                                 )
@@ -346,6 +348,16 @@ class MainActivity : FragmentActivity() {
                                     onNavigateBack = { navController.popBackStack() }
                                 )
                             }
+                        }
+
+                        servicePinPrompt?.let { prompt ->
+                            ServicePinPromptDialog(
+                                prompt = prompt,
+                                onDismiss = { vehicleViewModel.dismissServicePinPrompt() },
+                                onConfirm = { pin, savePin ->
+                                    vehicleViewModel.submitServicePinPrompt(pin, savePin)
+                                }
+                            )
                         }
                     }
                 }

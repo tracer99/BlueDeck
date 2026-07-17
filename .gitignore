@@ -80,3 +80,7 @@ Thumbs.db
 # Local signing credentials (generated)
 release.signing.env
 
+
+# Keystore backups
+*.keystore.old-*
+

@@ -512,16 +512,18 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
                     }
                     ACTION_CLIMATE -> {
                         val temp = preferencesManager.defaultClimateTemp.first()
+                        val duration = preferencesManager.defaultClimateDurationMinutes.first()
                         val command = repository.startClimate(
                             vin = vehicle.vin,
                             tempF = temp,
+                            durationMinutes = duration,
                             isEv = vehicle.isEV,
                             registrationId = vehicle.regId,
                             generation = vehicle.generation,
                             brandIndicator = vehicle.brandIndicator
                         )
                         if (command is Result.Success) {
-                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, "Cabin ${temp}°F", true)
+                            recordWidgetHistory(preferencesManager, vehicle, actionLabel, "Cabin ${temp}°F · ${duration} min", true)
                             refreshVehicleStatus(repository, preferencesManager, context, vehicle, "Climate sent from widget")
                         } else command
                     }
@@ -745,6 +747,19 @@ class BootReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             VehicleWidgetProvider.refreshAll(context)
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val prefs = PreferencesManager(context.applicationContext)
+                    val enabled = prefs.walkAwayLockEnabled.first()
+                    val selectedDevice = prefs.walkAwayBluetoothAddress.first()
+                    if (enabled && !selectedDevice.isNullOrBlank()) {
+                        com.bluedeck.automation.WalkAwayBluetoothMonitorService.start(context)
+                    }
+                } finally {
+                    pending.finish()
+                }
+            }
         }
     }
 }

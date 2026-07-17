@@ -14,19 +14,27 @@ android {
         applicationId = "com.bluedeck"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "1.9.0"
+        versionCode = 40
+        versionName = "1.10.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    val releaseStoreFile = System.getenv("KEYSTORE_FILE")
-        ?.takeIf { it.isNotBlank() }
+    // Prefer CI/shell env vars; fall back to local.properties for Android Studio.
+    val localProps = java.util.Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.isFile) f.inputStream().use { load(it) }
+    }
+    fun signingProp(name: String): String? =
+        System.getenv(name)?.takeIf { it.isNotBlank() }
+            ?: localProps.getProperty(name)?.takeIf { it.isNotBlank() }
+
+    val releaseStoreFile = signingProp("KEYSTORE_FILE")
         ?.let { file(it) }
         ?.takeIf { it.isFile }
-    val releaseStorePassword = System.getenv("KEYSTORE_PASSWORD")
-    val releaseKeyAlias = System.getenv("KEY_ALIAS")
-    val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+    val releaseStorePassword = signingProp("KEYSTORE_PASSWORD")
+    val releaseKeyAlias = signingProp("KEY_ALIAS")
+    val releaseKeyPassword = signingProp("KEY_PASSWORD")
     val hasReleaseSigning =
         releaseStoreFile != null &&
             !releaseStorePassword.isNullOrBlank() &&

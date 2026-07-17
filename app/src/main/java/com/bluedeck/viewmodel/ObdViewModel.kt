@@ -172,6 +172,10 @@ class ObdViewModel @Inject constructor(
         _statusMessage.value = "OBD logs cleared"
     }
 
+    fun reportStatus(message: String) {
+        _statusMessage.value = message
+    }
+
     fun clearStatusMessage() {
         _statusMessage.value = null
     }

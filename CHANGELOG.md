@@ -13,6 +13,35 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.10.0] - 2026-07-17
+
+### Added
+
+- When a remote command needs a Bluelink PIN and none is saved, prompt for the PIN with an optional “Save PIN for future commands” checkbox instead of failing immediately.
+- Walk-Away Lock automation: on vehicle Bluetooth disconnect, wait the configured delay, then send a remote lock (with foreground monitoring notification and success/failure alerts).
+
+### Changed
+
+- Moved the dashboard “Recent Commands” log below Features so it sits at the bottom of the screen.
+- Settings → Preferences: toggle to show or hide Recent Commands on the dashboard (on by default).
+
+### Fixed
+
+- Walk-Away Lock actually runs end-to-end (Bluetooth receivers, delayed alarm, and lock API were previously empty stubs).
+- Climate start: keep the On chip while BlueLink status catches up (was flipping back to Off until a later refresh).
+- Climate seat controls stay visible while climate is running (read-only) instead of disappearing.
+- Do not assume cooled/ventilated seats when the API does not report them (fixes Cool presets on Canada IONIQ 9 trims without seat ventilation).
+- Canada vehicle status: map `airCtrl` → `airCtrlOn` and `seatHeaterVentState` → seat heater fields so climate/seat status parse correctly.
+- Climate Presets (renamed from Seat Presets): Manage edits Warm/Cool start presets (temperature, duration, defrost, heated steering, seats); dashboard All Off stops climate instead of applying a start preset.
+- Climate preset defaults use round temperatures in the Settings temperature unit (°C or °F).
+- Climate Presets and dashboard climate include a run-duration picker (5–30 min); Settings → Preferences sets the default duration for quick actions and the widget.
+- Show the Bluelink PIN prompt from the active MainActivity UI (it was previously wired only to an unused nav host, so climate taps appeared to do nothing after confirm).
+- Canada IONIQ 9 / EV9-style climate start: retry with `remoteControl` when `hvacInfo` returns error 15109.
+- Canada climate stop shortly after start: surface BlueLink’s 90-second “processing earlier request” cooldown clearly, and remember the working climate payload so start doesn’t burn an extra API call.
+- EV Climate On/Off chip on the dashboard is interactive again (it was permanently disabled and ignored taps).
+- Restored a Climate quick action for EVs alongside Lock/Unlock (parity with ICE Start/Stop).
+- OBD Connect / Start logging now requests the Nearby Devices (Bluetooth) permission on Android 12+ before connecting, instead of failing with a permission error.
+
 ## [1.9.0] - 2026-07-14
 
 ### Changed

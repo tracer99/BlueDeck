@@ -1,10 +1,13 @@
 package com.bluedeck.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.bluedeck.ui.components.ServicePinPromptDialog
 import com.bluedeck.ui.screens.*
 import com.bluedeck.viewmodel.AuthViewModel
 import com.bluedeck.viewmodel.VehicleViewModel
@@ -21,7 +24,7 @@ sealed class Screen(val route: String) {
     object ValetMode : Screen("valet_mode")
     object DriverProfiles : Screen("driver_profiles")
     object SurroundView : Screen("surround_view")
-    object SeatPresets : Screen("seat_presets")
+    object ClimatePresets : Screen("climate_presets")
     object DigitalKey : Screen("digital_key")
     object ObdDiagnostics : Screen("obd_diagnostics")
 }
@@ -33,6 +36,7 @@ fun BlueDeckNavHost(
 ) {
     val navController = rememberNavController()
     val vehicleViewModel: VehicleViewModel = hiltViewModel()
+    val servicePinPrompt by vehicleViewModel.servicePinPrompt.collectAsStateWithLifecycle()
 
     NavHost(
         navController = navController,
@@ -61,7 +65,7 @@ fun BlueDeckNavHost(
                 onNavigateToValetMode = { navController.navigate(Screen.ValetMode.route) },
                 onNavigateToDriverProfiles = { navController.navigate(Screen.DriverProfiles.route) },
                 onNavigateToSurroundView = { navController.navigate(Screen.SurroundView.route) },
-                onNavigateToSeatPresets = { navController.navigate(Screen.SeatPresets.route) },
+                onNavigateToSeatPresets = { navController.navigate(Screen.ClimatePresets.route) },
                 onNavigateToDigitalKey = { navController.navigate(Screen.DigitalKey.route) },
                 onNavigateToObd = { navController.navigate(Screen.ObdDiagnostics.route) },
                 onLogout = {
@@ -142,8 +146,8 @@ fun BlueDeckNavHost(
             )
         }
 
-        composable(Screen.SeatPresets.route) {
-            SeatClimatePresetsScreen(
+        composable(Screen.ClimatePresets.route) {
+            ClimatePresetsScreen(
                 vehicleViewModel = vehicleViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
@@ -162,5 +166,15 @@ fun BlueDeckNavHost(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
+    }
+
+    servicePinPrompt?.let { prompt ->
+        ServicePinPromptDialog(
+            prompt = prompt,
+            onDismiss = { vehicleViewModel.dismissServicePinPrompt() },
+            onConfirm = { pin, savePin ->
+                vehicleViewModel.submitServicePinPrompt(pin, savePin)
+            }
+        )
     }
 }

@@ -58,6 +58,12 @@ class SettingsViewModel @Inject constructor(
     val useDynamicColor = preferencesManager.useDynamicColor
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    val showRecentCommands = preferencesManager.showRecentCommands
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    val defaultClimateDurationMinutes = preferencesManager.defaultClimateDurationMinutes
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 10)
+
     val servicePin = preferencesManager.servicePin
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -120,5 +126,13 @@ class SettingsViewModel @Inject constructor(
 
     fun setUseDynamicColor(enabled: Boolean) = viewModelScope.launch {
         preferencesManager.setUseDynamicColor(enabled)
+    }
+
+    fun setShowRecentCommands(enabled: Boolean) = viewModelScope.launch {
+        preferencesManager.setShowRecentCommands(enabled)
+    }
+
+    fun setDefaultClimateDurationMinutes(minutes: Int) = viewModelScope.launch {
+        preferencesManager.setDefaultClimateDurationMinutes(minutes)
     }
 }

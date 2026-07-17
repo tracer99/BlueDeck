@@ -45,10 +45,17 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluedeck.R
+import com.bluedeck.data.models.ClimatePreset
+import com.bluedeck.data.models.ClimatePresetsStore
+import com.bluedeck.data.models.ClimateSeatSettings
 import com.bluedeck.data.models.CommandHistoryEntry
+import com.bluedeck.data.models.MAX_CLIMATE_DURATION_MINUTES
+import com.bluedeck.data.models.MIN_CLIMATE_DURATION_MINUTES
 import com.bluedeck.data.models.Vehicle
 import com.bluedeck.data.models.VehicleFeatureCapabilities
 import com.bluedeck.data.models.VehicleStatusData
+import com.bluedeck.data.models.clampClimateSeatSettings
+import com.bluedeck.data.models.coerceClimateDurationMinutes
 import com.bluedeck.data.models.hasFuelTelemetryFor
 import com.bluedeck.data.models.resolveCapabilities
 import com.bluedeck.ui.components.CommandStatusBanner
@@ -90,10 +97,12 @@ fun DashboardScreen(
     val isStatusLoading by vehicleViewModel.isStatusLoading.collectAsStateWithLifecycle()
     val commandState by vehicleViewModel.commandState.collectAsStateWithLifecycle()
     val commandHistory by vehicleViewModel.commandHistory.collectAsStateWithLifecycle()
+    val showRecentCommands by vehicleViewModel.showRecentCommands.collectAsStateWithLifecycle()
     val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     val distanceUnit by vehicleViewModel.distanceUnit.collectAsStateWithLifecycle()
     val customDashboardImageUri by vehicleViewModel.customDashboardImageUri.collectAsStateWithLifecycle()
     val region by vehicleViewModel.region.collectAsStateWithLifecycle()
+    val remoteStartSettings by vehicleViewModel.remoteStartSettings.collectAsStateWithLifecycle()
     val featureCaps = remember(selectedVehicle, region) {
         selectedVehicle?.resolveCapabilities(region)
     }
@@ -302,15 +311,6 @@ fun DashboardScreen(
                         )
                     }
 
-                    if (commandHistory.isNotEmpty()) {
-                        item {
-                            RecentCommandHistoryCard(
-                                entries = commandHistory.take(5),
-                                onClear = { vehicleViewModel.clearCommandHistory() }
-                            )
-                        }
-                    }
-
                     // Climate controls moved from Advanced Controls to the main dashboard
                     item {
                         DashboardClimateControls(
@@ -318,7 +318,8 @@ fun DashboardScreen(
                             status = vehicleStatus,
                             featureCaps = featureCaps,
                             temperatureUnit = temperatureUnit,
-                            onStartClimate = { tempF, defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat ->
+                            defaultDurationMinutes = remoteStartSettings.durationMinutes,
+                            onStartClimate = { tempF, defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat, durationMinutes ->
                                 if (vehicleStatus?.doorsLocked == false) {
                                     pendingConfirmation = DashboardConfirmationRequest(
                                         title = "Lock vehicle first?",
@@ -332,7 +333,8 @@ fun DashboardScreen(
                                                 driverSeat = driverSeat,
                                                 passengerSeat = passengerSeat,
                                                 rearLeftSeat = rearLeftSeat,
-                                                rearRightSeat = rearRightSeat
+                                                rearRightSeat = rearRightSeat,
+                                                durationMinutes = durationMinutes
                                             )
                                         }
                                     )
@@ -341,6 +343,7 @@ fun DashboardScreen(
                                         title = "Start climate?",
                                         message = buildString {
                                             append("Start cabin climate at ${climateTemperatureLabelFromF(tempF.toString(), temperatureUnit)}")
+                                            append(" for $durationMinutes min")
                                             if (defrost) append(" with defrost")
                                             if (heatedSteering) append(" with heated steering wheel")
                                             val seatSummary = listOf(
@@ -364,7 +367,8 @@ fun DashboardScreen(
                                                 driverSeat = driverSeat,
                                                 passengerSeat = passengerSeat,
                                                 rearLeftSeat = rearLeftSeat,
-                                                rearRightSeat = rearRightSeat
+                                                rearRightSeat = rearRightSeat,
+                                                durationMinutes = durationMinutes
                                             )
                                         }
                                     )
@@ -400,6 +404,15 @@ fun DashboardScreen(
                             onValetMode = onNavigateToValetMode,
                             onObd = onNavigateToObd
                         )
+                    }
+
+                    if (showRecentCommands && commandHistory.isNotEmpty()) {
+                        item {
+                            RecentCommandHistoryCard(
+                                entries = commandHistory.take(5),
+                                onClear = { vehicleViewModel.clearCommandHistory() }
+                            )
+                        }
                     }
                 }
             }
@@ -1581,16 +1594,19 @@ fun QuickActionsGrid(
                 onClick = onUnlock,
                 compact = true
             )
-            if (!isEV) {
-                DashboardQuickActionButton(
-                    modifier = Modifier.weight(1f),
-                    icon = if (engineOn) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                    label = if (engineOn) "Stop" else "Start",
-                    tint = if (engineOn) ErrorRed else MaterialTheme.colorScheme.secondary,
-                    onClick = if (engineOn) onStopEngine else onRemoteStart,
-                    compact = true
-                )
-            }
+            DashboardQuickActionButton(
+                modifier = Modifier.weight(1f),
+                icon = if (engineOn) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                label = when {
+                    isEV && engineOn -> "Stop"
+                    isEV -> "Climate"
+                    engineOn -> "Stop"
+                    else -> "Start"
+                },
+                tint = if (engineOn) ErrorRed else MaterialTheme.colorScheme.secondary,
+                onClick = if (engineOn) onStopEngine else onRemoteStart,
+                compact = true
+            )
         }
         if (isEV && featureCaps?.showEvCharging != false) {
             val ev = status?.evStatus
@@ -1677,7 +1693,8 @@ fun DashboardClimateControls(
     status: VehicleStatusData?,
     featureCaps: VehicleFeatureCapabilities?,
     temperatureUnit: String,
-    onStartClimate: (Int, Boolean, Boolean, Int, Int, Int, Int) -> Unit,
+    defaultDurationMinutes: Int,
+    onStartClimate: (Int, Boolean, Boolean, Int, Int, Int, Int, Int) -> Unit,
     onStopClimate: () -> Unit,
     onManageSeatPresets: () -> Unit
 ) {
@@ -1687,13 +1704,16 @@ fun DashboardClimateControls(
     var defrost by remember { mutableStateOf(false) }
     var heatedSteering by remember { mutableStateOf(false) }
     var displayTemp by remember(temperatureUnit) { mutableFloatStateOf((statusDisplayTemp ?: climateDisplayValueFromF("72", temperatureUnit)).toFloat()) }
+    var durationMinutes by remember(defaultDurationMinutes) { mutableIntStateOf(defaultDurationMinutes) }
     var driverSeat by remember { mutableIntStateOf(2) }
     var passengerSeat by remember { mutableIntStateOf(2) }
     var rearLeftSeat by remember { mutableIntStateOf(2) }
     var rearRightSeat by remember { mutableIntStateOf(2) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var seatPresets by remember { mutableStateOf(loadDashboardSeatClimatePresets(context)) }
+    var seatPresets by remember(temperatureUnit) {
+        mutableStateOf(ClimatePresetsStore.load(context, temperatureUnit))
+    }
 
     LaunchedEffect(climateOn, statusDisplayTemp, temperatureUnit) {
         if (climateOn && statusDisplayTemp != null) {
@@ -1704,18 +1724,44 @@ fun DashboardClimateControls(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                seatPresets = loadDashboardSeatClimatePresets(context)
+                seatPresets = ClimatePresetsStore.load(context, temperatureUnit)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    fun applyPreset(preset: DashboardSeatClimatePreset) {
-        driverSeat = preset.driverSeat
-        passengerSeat = preset.passengerSeat
-        rearLeftSeat = preset.rearLeftSeat
-        rearRightSeat = preset.rearRightSeat
+    fun applyPreset(preset: ClimatePreset) {
+        if (preset.stopsClimate) {
+            if (climateOn) {
+                onStopClimate()
+            } else {
+                defrost = false
+                heatedSteering = false
+                driverSeat = 2
+                passengerSeat = 2
+                rearLeftSeat = 2
+                rearRightSeat = 2
+            }
+            return
+        }
+        displayTemp = climateDisplayValueFromF(preset.tempF, temperatureUnit).toFloat()
+        defrost = preset.defrost
+        heatedSteering = preset.heatedSteering && featureCaps?.showHeatedSteering != false
+        durationMinutes = coerceClimateDurationMinutes(preset.durationMinutes)
+        val clamped = vehicle?.clampClimateSeatSettings(
+            ClimateSeatSettings(
+                heatedSteering = heatedSteering,
+                driverSeat = preset.driverSeat,
+                passengerSeat = preset.passengerSeat,
+                rearLeftSeat = preset.rearLeftSeat,
+                rearRightSeat = preset.rearRightSeat
+            )
+        )
+        driverSeat = clamped?.driverSeat ?: preset.driverSeat
+        passengerSeat = clamped?.passengerSeat ?: preset.passengerSeat
+        rearLeftSeat = clamped?.rearLeftSeat ?: preset.rearLeftSeat
+        rearRightSeat = clamped?.rearRightSeat ?: preset.rearRightSeat
     }
 
     Card(
@@ -1751,9 +1797,24 @@ fun DashboardClimateControls(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                AssistChip(
-                    onClick = {},
-                    enabled = false,
+                FilterChip(
+                    selected = climateOn,
+                    onClick = {
+                        if (climateOn) {
+                            onStopClimate()
+                        } else {
+                            onStartClimate(
+                                climateFahrenheitFromDisplay(displayTemp.toInt(), temperatureUnit),
+                                defrost,
+                                heatedSteering,
+                                driverSeat,
+                                passengerSeat,
+                                rearLeftSeat,
+                                rearRightSeat,
+                                durationMinutes
+                            )
+                        }
+                    },
                     label = { Text(if (climateOn) "On" else "Off") },
                     leadingIcon = {
                         Icon(
@@ -1799,6 +1860,36 @@ fun DashboardClimateControls(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    "Duration",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "$durationMinutes min",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Slider(
+                value = durationMinutes.toFloat(),
+                onValueChange = { durationMinutes = coerceClimateDurationMinutes(it.toInt()) },
+                valueRange = MIN_CLIMATE_DURATION_MINUTES.toFloat()..MAX_CLIMATE_DURATION_MINUTES.toFloat(),
+                steps = 4,
+                enabled = !climateOn,
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary
+                )
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Filled.AcUnit,
@@ -1814,7 +1905,7 @@ fun DashboardClimateControls(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                Switch(checked = defrost, onCheckedChange = { defrost = it })
+                Switch(checked = defrost, onCheckedChange = { defrost = it }, enabled = !climateOn)
             }
 
             if (featureCaps?.showHeatedSteering != false) {
@@ -1838,33 +1929,59 @@ fun DashboardClimateControls(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    Switch(checked = heatedSteering, onCheckedChange = { heatedSteering = it })
+                    Switch(
+                        checked = heatedSteering,
+                        onCheckedChange = { heatedSteering = it },
+                        enabled = !climateOn
+                    )
                 }
             }
 
-            AnimatedVisibility(visible = !climateOn && featureCaps?.showSeatClimateControls != false) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (featureCaps != null) {
-                        SeatClimateMap(
-                            featureCaps = featureCaps,
-                            driverSeat = driverSeat,
-                            passengerSeat = passengerSeat,
-                            rearLeftSeat = rearLeftSeat,
-                            rearRightSeat = rearRightSeat,
-                            onDriverSeat = { driverSeat = it },
-                            onPassengerSeat = { passengerSeat = it },
-                            onRearLeftSeat = { rearLeftSeat = it },
-                            onRearRightSeat = { rearRightSeat = it }
-                        )
-                    }
-                    if (featureCaps?.showSeatClimatePresets != false) {
-                        DashboardSeatPresetStrip(
-                            presets = seatPresets,
-                            onApply = { applyPreset(it) },
-                            onManage = onManageSeatPresets
-                        )
-                    }
-                }
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 2.dp),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            )
+            DashboardClimatePresetStrip(
+                presets = seatPresets,
+                climateOn = climateOn,
+                onApply = { applyPreset(it) },
+                onManage = onManageSeatPresets
+            )
+
+            if (featureCaps?.showSeatClimateControls != false && featureCaps != null) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                )
+                val statusSeats = status?.seatHeaterVentInfo
+                SeatClimateMap(
+                    featureCaps = featureCaps,
+                    driverSeat = if (climateOn) {
+                        statusSeats?.driverSeatHeatState?.takeIf { it > 0 } ?: driverSeat
+                    } else {
+                        driverSeat
+                    },
+                    passengerSeat = if (climateOn) {
+                        statusSeats?.passengerSeatHeatState?.takeIf { it > 0 } ?: passengerSeat
+                    } else {
+                        passengerSeat
+                    },
+                    rearLeftSeat = if (climateOn) {
+                        statusSeats?.rearLeftSeatHeatState?.takeIf { it > 0 } ?: rearLeftSeat
+                    } else {
+                        rearLeftSeat
+                    },
+                    rearRightSeat = if (climateOn) {
+                        statusSeats?.rearRightSeatHeatState?.takeIf { it > 0 } ?: rearRightSeat
+                    } else {
+                        rearRightSeat
+                    },
+                    enabled = !climateOn,
+                    onDriverSeat = { driverSeat = it },
+                    onPassengerSeat = { passengerSeat = it },
+                    onRearLeftSeat = { rearLeftSeat = it },
+                    onRearRightSeat = { rearRightSeat = it }
+                )
             }
 
             Row(
@@ -1872,7 +1989,18 @@ fun DashboardClimateControls(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = { onStartClimate(climateFahrenheitFromDisplay(displayTemp.toInt(), temperatureUnit), defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat) },
+                    onClick = {
+                        onStartClimate(
+                            climateFahrenheitFromDisplay(displayTemp.toInt(), temperatureUnit),
+                            defrost,
+                            heatedSteering,
+                            driverSeat,
+                            passengerSeat,
+                            rearLeftSeat,
+                            rearRightSeat,
+                            durationMinutes
+                        )
+                    },
                     enabled = !climateOn,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
@@ -1897,37 +2025,11 @@ fun DashboardClimateControls(
 
 
 
-private data class DashboardSeatClimatePreset(
-    val name: String,
-    val driverSeat: Int = 2,
-    val passengerSeat: Int = 2,
-    val rearLeftSeat: Int = 2,
-    val rearRightSeat: Int = 2
-)
-
-private fun defaultDashboardSeatClimatePresets(): List<DashboardSeatClimatePreset> = listOf(
-    DashboardSeatClimatePreset(name = "Warm", driverSeat = 7, passengerSeat = 7, rearLeftSeat = 7, rearRightSeat = 7),
-    DashboardSeatClimatePreset(name = "Cool", driverSeat = 4, passengerSeat = 4, rearLeftSeat = 2, rearRightSeat = 2),
-    DashboardSeatClimatePreset(name = "All Off", driverSeat = 2, passengerSeat = 2, rearLeftSeat = 2, rearRightSeat = 2)
-)
-
-private fun loadDashboardSeatClimatePresets(context: android.content.Context): List<DashboardSeatClimatePreset> {
-    val prefs = context.getSharedPreferences("seat_climate_presets", android.content.Context.MODE_PRIVATE)
-    return defaultDashboardSeatClimatePresets().mapIndexed { index, fallback ->
-        DashboardSeatClimatePreset(
-            name = prefs.getString("preset_${index}_name", fallback.name) ?: fallback.name,
-            driverSeat = prefs.getInt("preset_${index}_driver", fallback.driverSeat),
-            passengerSeat = prefs.getInt("preset_${index}_passenger", fallback.passengerSeat),
-            rearLeftSeat = prefs.getInt("preset_${index}_rear_left", fallback.rearLeftSeat),
-            rearRightSeat = prefs.getInt("preset_${index}_rear_right", fallback.rearRightSeat)
-        )
-    }
-}
-
 @Composable
-private fun DashboardSeatPresetStrip(
-    presets: List<DashboardSeatClimatePreset>,
-    onApply: (DashboardSeatClimatePreset) -> Unit,
+private fun DashboardClimatePresetStrip(
+    presets: List<ClimatePreset>,
+    climateOn: Boolean,
+    onApply: (ClimatePreset) -> Unit,
     onManage: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1936,13 +2038,24 @@ private fun DashboardSeatPresetStrip(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Seat Presets",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            TextButton(onClick = onManage, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Climate Presets",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "Warm/Cool apply settings · All Off stops climate",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(
+                onClick = onManage,
+                enabled = !climateOn,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
                 Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Manage")
@@ -1953,8 +2066,10 @@ private fun DashboardSeatPresetStrip(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             presets.take(3).forEach { preset ->
+                val enabled = if (preset.stopsClimate) true else !climateOn
                 OutlinedButton(
                     onClick = { onApply(preset) },
+                    enabled = enabled,
                     modifier = Modifier.weight(1f).height(42.dp),
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                     shape = RoundedCornerShape(14.dp)
@@ -1979,6 +2094,7 @@ private fun SeatClimateMap(
     passengerSeat: Int,
     rearLeftSeat: Int,
     rearRightSeat: Int,
+    enabled: Boolean = true,
     onDriverSeat: (Int) -> Unit,
     onPassengerSeat: (Int) -> Unit,
     onRearLeftSeat: (Int) -> Unit,
@@ -2002,7 +2118,7 @@ private fun SeatClimateMap(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                "Tap seats to cycle",
+                if (enabled) "Tap seats to cycle" else "Active with climate",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -2034,7 +2150,8 @@ private fun SeatClimateMap(
                                 )
                             },
                             modifier = Modifier.weight(1f),
-                            ventCapable = featureCaps.driver.ventCapableForSelector
+                            ventCapable = featureCaps.driver.ventCapableForSelector,
+                            enabled = enabled
                         )
                     }
                     if (showPassenger) {
@@ -2050,7 +2167,8 @@ private fun SeatClimateMap(
                                 )
                             },
                             modifier = Modifier.weight(1f),
-                            ventCapable = featureCaps.passenger.ventCapableForSelector
+                            ventCapable = featureCaps.passenger.ventCapableForSelector,
+                            enabled = enabled
                         )
                     }
                 }
@@ -2073,7 +2191,8 @@ private fun SeatClimateMap(
                                 )
                             },
                             modifier = Modifier.weight(1f),
-                            ventCapable = featureCaps.rearLeft.ventCapableForSelector
+                            ventCapable = featureCaps.rearLeft.ventCapableForSelector,
+                            enabled = enabled
                         )
                     }
                     if (showRearRight) {
@@ -2089,7 +2208,8 @@ private fun SeatClimateMap(
                                 )
                             },
                             modifier = Modifier.weight(1f),
-                            ventCapable = featureCaps.rearRight.ventCapableForSelector
+                            ventCapable = featureCaps.rearRight.ventCapableForSelector,
+                            enabled = enabled
                         )
                     }
                 }
@@ -2104,7 +2224,8 @@ private fun CompactSeatTile(
     value: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    ventCapable: Boolean
+    ventCapable: Boolean,
+    enabled: Boolean = true
 ) {
     val accent = dashboardSeatClimateColor(value)
     val tileAccent = MaterialTheme.colorScheme.primary
@@ -2117,12 +2238,15 @@ private fun CompactSeatTile(
 
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier.height(78.dp),
         shape = RoundedCornerShape(18.dp),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = tileAccent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.14f),
-            contentColor = accent
+            contentColor = accent,
+            disabledContainerColor = tileAccent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.14f),
+            disabledContentColor = accent
         ),
         border = BorderStroke(1.dp, tileAccent.copy(alpha = 0.55f))
     ) {

@@ -1,10 +1,14 @@
 package com.bluedeck.data.obd.transport
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,14 +40,25 @@ class BluetoothClassicObdTransport @Inject constructor(
 
     @SuppressLint("MissingPermission")
     suspend fun connect(address: String) = withContext(Dispatchers.IO) {
+        ensureBluetoothConnectPermission()
         disconnect()
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
             ?: BluetoothAdapter.getDefaultAdapter()
             ?: throw IllegalStateException("Bluetooth not available")
+        if (!adapter.isEnabled) {
+            throw IllegalStateException("Bluetooth is turned off")
+        }
         val device = adapter.getRemoteDevice(address)
         val connectedSocket = device.createRfcommSocketToServiceRecord(SPP_UUID)
         adapter.cancelDiscovery()
-        connectedSocket.connect()
+        try {
+            connectedSocket.connect()
+        } catch (e: SecurityException) {
+            throw IllegalStateException(
+                "Bluetooth permission is required to connect to the OBD adapter",
+                e
+            )
+        }
         socket = connectedSocket
         reader = BufferedReader(InputStreamReader(connectedSocket.inputStream))
         writer = OutputStreamWriter(connectedSocket.outputStream)
@@ -75,5 +90,18 @@ class BluetoothClassicObdTransport @Inject constructor(
             Thread.sleep(25)
         }
         null
+    }
+
+    private fun ensureBluetoothConnectPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            throw IllegalStateException(
+                "Bluetooth permission is required to connect to the OBD adapter"
+            )
+        }
     }
 }

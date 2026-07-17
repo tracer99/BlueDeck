@@ -8,10 +8,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.AirlineSeatReclineNormal
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,14 +20,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bluedeck.data.models.ClimatePreset
+import com.bluedeck.data.models.ClimatePresetsStore
+import com.bluedeck.data.models.MAX_CLIMATE_DURATION_MINUTES
+import com.bluedeck.data.models.MIN_CLIMATE_DURATION_MINUTES
+import com.bluedeck.data.models.coerceClimateDurationMinutes
 import com.bluedeck.data.models.VehicleFeatureCapabilities
 import com.bluedeck.data.models.resolveCapabilities
+import com.bluedeck.ui.theme.climateDisplayValueFromF
+import com.bluedeck.ui.theme.climateFahrenheitFromDisplay
+import com.bluedeck.ui.theme.climateSliderRange
+import com.bluedeck.ui.theme.climateSliderSteps
+import com.bluedeck.ui.theme.climateTemperatureLabelFromF
 import com.bluedeck.viewmodel.VehicleViewModel
 
 private val SeatHeatOrange = Color(0xFFFF9800)
@@ -34,34 +45,37 @@ private val SeatVentBlue = Color(0xFF03A9F4)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SeatClimatePresetsScreen(
+fun ClimatePresetsScreen(
     vehicleViewModel: VehicleViewModel,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
     val vehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
     val region by vehicleViewModel.region.collectAsStateWithLifecycle()
+    val temperatureUnit by vehicleViewModel.temperatureUnit.collectAsStateWithLifecycle()
     val featureCaps = remember(vehicle, region) { vehicle?.resolveCapabilities(region) }
-    var presets by remember { mutableStateOf(loadSeatPresetEditorPresets(context)) }
+    var presets by remember(temperatureUnit) {
+        mutableStateOf(ClimatePresetsStore.load(context, temperatureUnit))
+    }
     var resetDialog by remember { mutableStateOf(false) }
 
-    fun updatePreset(index: Int, preset: SeatPresetEditorPreset) {
+    fun updatePreset(index: Int, preset: ClimatePreset) {
         val updated = presets.toMutableList()
         updated[index] = preset
         presets = updated
-        saveSeatPresetEditorPresets(context, updated)
+        ClimatePresetsStore.save(context, updated)
     }
 
     if (resetDialog) {
         AlertDialog(
             onDismissRequest = { resetDialog = false },
-            title = { Text("Reset seat presets?") },
-            text = { Text("This will restore the three default seat climate presets.") },
+            title = { Text("Reset climate presets?") },
+            text = { Text("This will restore the default Warm and Cool climate presets. All Off always stops climate.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        presets = defaultSeatPresetEditorPresets()
-                        saveSeatPresetEditorPresets(context, presets)
+                        presets = ClimatePresetsStore.defaults(temperatureUnit)
+                        ClimatePresetsStore.save(context, presets)
                         resetDialog = false
                     }
                 ) { Text("Reset") }
@@ -75,7 +89,7 @@ fun SeatClimatePresetsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Seat Presets", fontWeight = FontWeight.Bold) },
+                title = { Text("Climate Presets", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -98,22 +112,70 @@ fun SeatClimatePresetsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                if (featureCaps == null) {
-                    "Name each preset and choose the seat heat/vent level to send when you start climate."
-                } else {
-                    "Name each preset and choose seat levels for the positions your vehicle supports."
-                },
+                "Each start preset sets cabin temperature, duration, and comfort options applied on the dashboard before you start climate. All Off always stops climate.",
                 fontSize = 14.sp,
                 lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            presets.take(3).forEachIndexed { index, preset ->
-                SeatPresetEditorCard(
+            presets.filterNot { it.stopsClimate }.forEach { preset ->
+                val index = presets.indexOf(preset)
+                ClimatePresetEditorCard(
                     index = index,
                     preset = preset,
                     featureCaps = featureCaps,
+                    temperatureUnit = temperatureUnit,
                     onPresetChange = { updatePreset(index, it) }
+                )
+            }
+
+            ClimateOffPresetInfoCard()
+        }
+    }
+}
+
+/** Kept for navigation call sites that still reference the old name. */
+@Composable
+fun SeatClimatePresetsScreen(
+    vehicleViewModel: VehicleViewModel,
+    onNavigateBack: () -> Unit
+) = ClimatePresetsScreen(vehicleViewModel, onNavigateBack)
+
+@Composable
+private fun ClimateOffPresetInfoCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "Off",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                    .wrapContentSize(Alignment.Center)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "All Off",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "Stops cabin climate. Not configurable — it always turns climate off.",
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -121,12 +183,14 @@ fun SeatClimatePresetsScreen(
 }
 
 @Composable
-private fun SeatPresetEditorCard(
+private fun ClimatePresetEditorCard(
     index: Int,
-    preset: SeatPresetEditorPreset,
+    preset: ClimatePreset,
     featureCaps: VehicleFeatureCapabilities?,
-    onPresetChange: (SeatPresetEditorPreset) -> Unit
+    temperatureUnit: String,
+    onPresetChange: (ClimatePreset) -> Unit
 ) {
+    val displayTemp = climateDisplayValueFromF(preset.tempF, temperatureUnit).toFloat()
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -161,7 +225,127 @@ private fun SeatPresetEditorCard(
                 )
             }
 
-            if (featureCaps == null || featureCaps.showSeatClimatePresets) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Temperature",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        climateTemperatureLabelFromF(preset.tempF, temperatureUnit),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = displayTemp,
+                    onValueChange = {
+                        val tempF = climateFahrenheitFromDisplay(it.toInt(), temperatureUnit).toString()
+                        onPresetChange(preset.copy(tempF = tempF))
+                    },
+                    valueRange = climateSliderRange(temperatureUnit),
+                    steps = climateSliderSteps(temperatureUnit),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.AcUnit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Defrost", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+                Switch(
+                    checked = preset.defrost,
+                    onCheckedChange = { onPresetChange(preset.copy(defrost = it)) }
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Run Duration",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "${preset.durationMinutes} min",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Slider(
+                    value = preset.durationMinutes.toFloat(),
+                    onValueChange = {
+                        onPresetChange(
+                            preset.copy(durationMinutes = coerceClimateDurationMinutes(it.toInt()))
+                        )
+                    },
+                    valueRange = MIN_CLIMATE_DURATION_MINUTES.toFloat()..MAX_CLIMATE_DURATION_MINUTES.toFloat(),
+                    steps = 4,
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+
+            if (featureCaps?.showHeatedSteering != false) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Straight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Heated Steering Wheel", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Switch(
+                        checked = preset.heatedSteering,
+                        onCheckedChange = { onPresetChange(preset.copy(heatedSteering = it)) }
+                    )
+                }
+            }
+
+            if (featureCaps == null || featureCaps.showSeatClimateControls) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                Text(
+                    "Seat climate",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 PresetSeatMap(
                     featureCaps = featureCaps,
                     driverSeat = preset.driverSeat,
@@ -176,7 +360,7 @@ private fun SeatPresetEditorCard(
             }
 
             Text(
-                preset.summary(),
+                preset.summary(temperatureUnit, featureCaps),
                 fontSize = 12.sp,
                 lineHeight = 15.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -199,14 +383,14 @@ private fun PresetSeatMap(
 ) {
     val showDriver = featureCaps?.driver?.let { it.showHeat || it.showVent } ?: true
     val showPassenger = featureCaps?.passenger?.let { it.showHeat || it.showVent } ?: true
-    val showRearLeft = featureCaps?.rearLeft?.let { it.showHeat || it.showVent } ?: true
-    val showRearRight = featureCaps?.rearRight?.let { it.showHeat || it.showVent } ?: true
+    val showRearLeft = featureCaps?.rearLeft?.let { it.showHeat || it.showVent } ?: false
+    val showRearRight = featureCaps?.rearRight?.let { it.showHeat || it.showVent } ?: false
     if (!showDriver && !showPassenger && !showRearLeft && !showRearRight) return
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -217,7 +401,7 @@ private fun PresetSeatMap(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (showDriver) {
-                    val ventCapable = featureCaps?.driver?.ventCapableForSelector ?: true
+                    val ventCapable = featureCaps?.driver?.ventCapableForSelector ?: false
                     PresetSeatTile(
                         label = "Driver",
                         value = driverSeat,
@@ -227,7 +411,7 @@ private fun PresetSeatMap(
                     )
                 }
                 if (showPassenger) {
-                    val ventCapable = featureCaps?.passenger?.ventCapableForSelector ?: true
+                    val ventCapable = featureCaps?.passenger?.ventCapableForSelector ?: false
                     PresetSeatTile(
                         label = "Passenger",
                         value = passengerSeat,
@@ -277,94 +461,34 @@ private fun PresetSeatTile(
     modifier: Modifier = Modifier
 ) {
     val accent = presetSeatColor(value)
-    val tileAccent = MaterialTheme.colorScheme.primary
-    val icon = when (value) {
-        6, 7, 8 -> Icons.Filled.Whatshot
-        3, 4, 5 -> Icons.Filled.AcUnit
-        else -> Icons.Filled.AirlineSeatReclineNormal
-    }
-
-    Surface(
-        modifier = modifier
-            .height(82.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(72.dp),
         shape = RoundedCornerShape(16.dp),
-        color = tileAccent.copy(alpha = if (value == 0 || value == 2) 0.08f else 0.14f),
-        contentColor = accent,
-        border = BorderStroke(1.dp, tileAccent.copy(alpha = 0.55f))
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = if (value == 0 || value == 2) 0.06f else 0.12f),
+            contentColor = accent
+        )
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(
-                label,
-                fontSize = 12.sp,
-                lineHeight = 13.sp,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = when (value) {
+                    6, 7, 8 -> Icons.Filled.Whatshot
+                    3, 4, 5 -> Icons.Filled.AcUnit
+                    else -> Icons.Filled.AirlineSeatReclineNormal
+                },
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
             )
-            Text(
-                presetSeatLabel(value),
-                fontSize = 12.sp,
-                lineHeight = 13.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                color = accent
-            )
+            Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
+            Text(presetSeatLabel(value), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accent)
             if (!ventCapable && value in 3..5) {
-                // Should not happen through normal cycling, but keeps old saved values readable.
                 Text("Unsupported", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
             }
         }
     }
-}
-
-private data class SeatPresetEditorPreset(
-    val name: String,
-    val driverSeat: Int = 2,
-    val passengerSeat: Int = 2,
-    val rearLeftSeat: Int = 2,
-    val rearRightSeat: Int = 2
-)
-
-private fun defaultSeatPresetEditorPresets(): List<SeatPresetEditorPreset> = listOf(
-    SeatPresetEditorPreset(name = "Warm", driverSeat = 7, passengerSeat = 7, rearLeftSeat = 7, rearRightSeat = 7),
-    SeatPresetEditorPreset(name = "Cool", driverSeat = 4, passengerSeat = 4, rearLeftSeat = 2, rearRightSeat = 2),
-    SeatPresetEditorPreset(name = "All Off", driverSeat = 2, passengerSeat = 2, rearLeftSeat = 2, rearRightSeat = 2)
-)
-
-private fun loadSeatPresetEditorPresets(context: android.content.Context): List<SeatPresetEditorPreset> {
-    val prefs = context.getSharedPreferences("seat_climate_presets", android.content.Context.MODE_PRIVATE)
-    return defaultSeatPresetEditorPresets().mapIndexed { index, fallback ->
-        SeatPresetEditorPreset(
-            name = prefs.getString("preset_${index}_name", fallback.name) ?: fallback.name,
-            driverSeat = prefs.getInt("preset_${index}_driver", fallback.driverSeat),
-            passengerSeat = prefs.getInt("preset_${index}_passenger", fallback.passengerSeat),
-            rearLeftSeat = prefs.getInt("preset_${index}_rear_left", fallback.rearLeftSeat),
-            rearRightSeat = prefs.getInt("preset_${index}_rear_right", fallback.rearRightSeat)
-        )
-    }
-}
-
-private fun saveSeatPresetEditorPresets(context: android.content.Context, presets: List<SeatPresetEditorPreset>) {
-    context.getSharedPreferences("seat_climate_presets", android.content.Context.MODE_PRIVATE)
-        .edit()
-        .apply {
-            presets.take(3).forEachIndexed { index, preset ->
-                putString("preset_${index}_name", preset.name.trim().ifBlank { "Preset ${index + 1}" })
-                putInt("preset_${index}_driver", preset.driverSeat)
-                putInt("preset_${index}_passenger", preset.passengerSeat)
-                putInt("preset_${index}_rear_left", preset.rearLeftSeat)
-                putInt("preset_${index}_rear_right", preset.rearRightSeat)
-            }
-        }
-        .apply()
 }
 
 private fun nextPresetSeatLevel(current: Int, ventCapable: Boolean): Int {
@@ -391,17 +515,26 @@ private fun presetSeatColor(value: Int): Color = when (value) {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-private fun SeatPresetEditorPreset.summary(): String {
-    val active = listOf(
+private fun ClimatePreset.summary(
+    temperatureUnit: String,
+    featureCaps: VehicleFeatureCapabilities?
+): String {
+    val parts = mutableListOf(
+        climateTemperatureLabelFromF(tempF, temperatureUnit),
+        "${durationMinutes} min"
+    )
+    if (defrost) parts += "Defrost"
+    if (heatedSteering && featureCaps?.showHeatedSteering != false) parts += "Heated wheel"
+    val seats = listOf(
         "Driver" to driverSeat,
         "Passenger" to passengerSeat,
         "Rear L" to rearLeftSeat,
         "Rear R" to rearRightSeat
     ).filter { (_, value) -> value != 0 && value != 2 }
-
-    return if (active.isEmpty()) {
-        "All seats off"
+    if (seats.isEmpty()) {
+        parts += "Seats off"
     } else {
-        active.joinToString(" · ") { (seat, value) -> "$seat ${presetSeatLabel(value)}" }
+        parts += seats.joinToString { (seat, value) -> "$seat ${presetSeatLabel(value)}" }
     }
+    return parts.joinToString(" · ")
 }

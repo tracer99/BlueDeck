@@ -59,6 +59,27 @@ class VehicleRepository @Inject constructor(
     private var pendingOtpMessage: String? = null
     private val gson = Gson()
     private val seatConfigurationsByVin = mutableMapOf<String, SeatConfigurations>()
+    /** Cached after a successful CA EV climate start: true = remoteControl, false = hvacInfo. */
+    private val canadaEvUsesRemoteControl = mutableMapOf<String, Boolean>()
+    private val canadaCommandCooldownUntilMs = mutableMapOf<String, Long>()
+
+    private companion object {
+        const val CANADA_COMMAND_COOLDOWN_MS = 90_000L
+    }
+
+    private fun rememberCanadaCommandCooldown(vehicleId: String) {
+        canadaCommandCooldownUntilMs[vehicleId] = System.currentTimeMillis() + CANADA_COMMAND_COOLDOWN_MS
+    }
+
+    private fun canadaCooldownRemainingMs(vehicleId: String): Long {
+        val until = canadaCommandCooldownUntilMs[vehicleId] ?: return 0L
+        return (until - System.currentTimeMillis()).coerceAtLeast(0L)
+    }
+
+    private fun canadaCooldownMessage(remainingMs: Long): String {
+        val seconds = ((remainingMs + 999) / 1000).toInt().coerceAtLeast(1)
+        return "BlueLink is still processing the previous request. Please wait about $seconds seconds, then try again."
+    }
 
     private suspend fun currentRegion(): Region {
         val regionStr = preferencesManager.region.first()
@@ -157,9 +178,9 @@ class VehicleRepository @Inject constructor(
         ?: throw IllegalStateException("Not authenticated")
 
     private suspend fun getServicePin(required: Boolean = true): String {
-        val pin = preferencesManager.servicePin.first().orEmpty().trim()
+        val pin = preferencesManager.effectiveServicePin()
         if (required && pin.isBlank()) {
-            throw IllegalStateException("Bluelink PIN is required. Add your 4-digit PIN in Settings > Account.")
+            throw IllegalStateException("Bluelink PIN is required.")
         }
         return pin
     }
@@ -529,6 +550,10 @@ class VehicleRepository @Inject constructor(
             ?: json?.objectOrNull("responseHeader")?.stringOrNull("responseDesc")
         val errorCode = error?.stringOrNull("errorCode")
             ?: json?.objectOrNull("responseHeader")?.stringOrNull("responseCode")?.toString()
+        if (errorCode == "6533") {
+            return errorDesc?.takeIf { it.isNotBlank() }
+                ?: "BlueLink is still processing an earlier request. Please wait about 90 seconds, then try again."
+        }
         return when {
             !errorDesc.isNullOrBlank() && !errorCode.isNullOrBlank() -> "$fallback ($errorCode): $errorDesc"
             !errorDesc.isNullOrBlank() -> errorDesc
@@ -886,9 +911,67 @@ class VehicleRepository @Inject constructor(
         }
         val status = json.objectOrNull("result")?.objectOrNull("status")
             ?: return Result.Error("Could not parse Canadian vehicle status")
-        val data = gson.fromJson(normalizeEuropeDistanceUnits(status), VehicleStatusData::class.java)
+        val data = gson.fromJson(normalizeCanadaVehicleStatus(status), VehicleStatusData::class.java)
         preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
         return Result.Success(data)
+    }
+
+    /**
+     * Canada status uses [airCtrlOn] (same as our model) when present, but some payloads
+     * only expose [airCtrl]. Seat climate is under [seatHeaterVentState] with fl/fr keys
+     * rather than [seatHeaterVentInfo] with drv/ast keys.
+     */
+    private fun normalizeCanadaVehicleStatus(status: JsonObject): JsonObject {
+        val normalized = normalizeEuropeDistanceUnits(status).deepCopy()
+
+        if (!normalized.has("airCtrlOn") && normalized.has("airCtrl")) {
+            when (val airCtrl = normalized.get("airCtrl")) {
+                null, is com.google.gson.JsonNull -> Unit
+                else -> {
+                    val on = when {
+                        airCtrl.isJsonPrimitive && airCtrl.asJsonPrimitive.isBoolean -> airCtrl.asBoolean
+                        airCtrl.isJsonPrimitive && airCtrl.asJsonPrimitive.isNumber -> airCtrl.asInt != 0
+                        airCtrl.isJsonPrimitive && airCtrl.asJsonPrimitive.isString -> {
+                            val raw = airCtrl.asString.trim()
+                            raw.equals("true", ignoreCase = true) || raw == "1"
+                        }
+                        else -> false
+                    }
+                    normalized.addProperty("airCtrlOn", on)
+                }
+            }
+        }
+
+        if (!normalized.has("seatHeaterVentInfo")) {
+            val seatState = normalized.objectOrNull("seatHeaterVentState")
+                ?: normalized.objectOrNull("seatHeaterVentInfo")
+            if (seatState != null) {
+                normalized.add("seatHeaterVentInfo", JsonObject().apply {
+                    addProperty(
+                        "drvSeatHeatState",
+                        seatState.intOrNull("flSeatHeatState")
+                            ?: seatState.intOrNull("drvSeatHeatState")
+                            ?: 0
+                    )
+                    addProperty(
+                        "astSeatHeatState",
+                        seatState.intOrNull("frSeatHeatState")
+                            ?: seatState.intOrNull("astSeatHeatState")
+                            ?: 0
+                    )
+                    addProperty(
+                        "rlSeatHeatState",
+                        seatState.intOrNull("rlSeatHeatState") ?: 0
+                    )
+                    addProperty(
+                        "rrSeatHeatState",
+                        seatState.intOrNull("rrSeatHeatState") ?: 0
+                    )
+                })
+            }
+        }
+
+        return normalized
     }
 
     private suspend fun getCanadaPinAuth(
@@ -1029,17 +1112,39 @@ class VehicleRepository @Inject constructor(
         return halfStep.toString(16).padStart(2, '0').uppercase() + "H"
     }
 
-    private fun canadaClimatePayload(pin: String, tempF: String, defrost: Boolean, durationMinutes: Int, isEv: Boolean): JsonObject {
+    /** Canada seat commands use 0 for off; BlueDeck UI uses Hyundai USA code 2 for off. */
+    private fun canadaSeatCommand(level: Int): Int = when (level) {
+        0, 2 -> 0
+        else -> level
+    }
+
+    /**
+     * Canada EV climate payloads:
+     * - Most EVs accept `hvacInfo`
+     * - Newer models (IONIQ 9, EV9, etc.) require `remoteControl` and return error 15109 otherwise
+     */
+    private fun canadaClimatePayload(
+        pin: String,
+        tempF: String,
+        defrost: Boolean,
+        durationMinutes: Int,
+        isEv: Boolean,
+        useRemoteControl: Boolean = false,
+        driverSeat: Int = 0,
+        passengerSeat: Int = 0,
+        rearLeftSeat: Int = 0,
+        rearRightSeat: Int = 0
+    ): JsonObject {
         val airTemp = JsonObject().apply {
             addProperty("value", canadaClimateTempHexFromF(tempF))
             addProperty("unit", 0)
             addProperty("hvacTempType", if (isEv) 1 else 0)
         }
         val seatCommands = JsonObject().apply {
-            addProperty("drvSeatOptCmd", 0)
-            addProperty("astSeatOptCmd", 0)
-            addProperty("rlSeatOptCmd", 0)
-            addProperty("rrSeatOptCmd", 0)
+            addProperty("drvSeatOptCmd", canadaSeatCommand(driverSeat))
+            addProperty("astSeatOptCmd", canadaSeatCommand(passengerSeat))
+            addProperty("rlSeatOptCmd", canadaSeatCommand(rearLeftSeat))
+            addProperty("rrSeatOptCmd", canadaSeatCommand(rearRightSeat))
         }
         val settings = JsonObject().apply {
             addProperty("airCtrl", 1)
@@ -1052,7 +1157,133 @@ class VehicleRepository @Inject constructor(
         }
         return JsonObject().apply {
             addProperty("pin", pin)
-            if (isEv) add("hvacInfo", settings) else add("setting", settings)
+            when {
+                !isEv -> add("setting", settings)
+                useRemoteControl -> add("remoteControl", settings)
+                else -> add("hvacInfo", settings)
+            }
+        }
+    }
+
+    private fun canadaErrorCode(json: JsonObject?): String? =
+        json?.objectOrNull("error")?.stringOrNull("errorCode")
+
+    private suspend fun startCanadaClimate(
+        vin: String,
+        registrationId: String,
+        tempF: String,
+        defrost: Boolean,
+        durationMinutes: Int,
+        isEv: Boolean,
+        driverSeatHeat: Int,
+        passengerSeatHeat: Int,
+        rearLeftSeatHeat: Int,
+        rearRightSeatHeat: Int,
+        retriedAuth: Boolean = false
+    ): Result<Unit> {
+        return try {
+            val accessToken = getToken()
+            val pin = getServicePin()
+            val deviceId = preferencesManager.getOrCreateCanadaDeviceId()
+            val vehicleId = registrationId.ifBlank { vin }
+            val pAuth = getCanadaPinAuth(accessToken, vehicleId, pin, deviceId)
+
+            fun payload(useRemoteControl: Boolean) = canadaClimatePayload(
+                pin = pin,
+                tempF = tempF,
+                defrost = defrost,
+                durationMinutes = durationMinutes,
+                isEv = isEv,
+                useRemoteControl = useRemoteControl,
+                driverSeat = driverSeatHeat,
+                passengerSeat = passengerSeatHeat,
+                rearLeftSeat = rearLeftSeatHeat,
+                rearRightSeat = rearRightSeatHeat
+            )
+
+            if (!isEv) {
+                val response = getCanadaApiService().startEngine(
+                    accessToken, vehicleId, pAuth, deviceId, payload(useRemoteControl = false)
+                )
+                return when (val outcome = classifyCanadaCommandResponse(response.code(), readRawResponseBody(response), "Start")) {
+                    CanadaCommandOutcome.Ok -> Result.Success(Unit)
+                    is CanadaCommandOutcome.Failed -> Result.Error(outcome.message, outcome.code)
+                    is CanadaCommandOutcome.AuthFailed -> {
+                        val refreshedToken = canadaAccessTokenAfterAuthFailure(outcome.httpCode, outcome.json, retriedAuth)
+                        if (refreshedToken != null) {
+                            startCanadaClimate(
+                                vin, registrationId, tempF, defrost, durationMinutes, isEv,
+                                driverSeatHeat, passengerSeatHeat, rearLeftSeatHeat, rearRightSeatHeat,
+                                retriedAuth = true
+                            )
+                        } else {
+                            Result.Error("Session expired. Please sign in again.", outcome.httpCode)
+                        }
+                    }
+                }
+            }
+
+            // Prefer the payload key that worked last time for this vehicle (IONIQ 9 needs remoteControl).
+            // That avoids a failed probe call, which also triggers BlueLink's 90s command cooldown.
+            val preferRemoteControl = canadaEvUsesRemoteControl[vehicleId] == true
+            val firstRemote = preferRemoteControl
+            val firstResponse = getCanadaApiService().startEvClimate(
+                accessToken, vehicleId, pAuth, deviceId, payload(useRemoteControl = firstRemote)
+            )
+            val firstRaw = readRawResponseBody(firstResponse)
+            when (val firstOutcome = classifyCanadaCommandResponse(firstResponse.code(), firstRaw, "Start")) {
+                CanadaCommandOutcome.Ok -> {
+                    canadaEvUsesRemoteControl[vehicleId] = firstRemote
+                    rememberCanadaCommandCooldown(vehicleId)
+                    Result.Success(Unit)
+                }
+                is CanadaCommandOutcome.AuthFailed -> {
+                    val refreshedToken = canadaAccessTokenAfterAuthFailure(firstOutcome.httpCode, firstOutcome.json, retriedAuth)
+                    if (refreshedToken != null) {
+                        startCanadaClimate(
+                            vin, registrationId, tempF, defrost, durationMinutes, isEv,
+                            driverSeatHeat, passengerSeatHeat, rearLeftSeatHeat, rearRightSeatHeat,
+                            retriedAuth = true
+                        )
+                    } else {
+                        Result.Error("Session expired. Please sign in again.", firstOutcome.httpCode)
+                    }
+                }
+                is CanadaCommandOutcome.Failed -> {
+                    rememberCanadaCommandCooldown(vehicleId)
+                    val firstJson = runCatching {
+                        JsonParser.parseString(firstRaw).asJsonObject
+                    }.getOrNull()
+                    if (canadaErrorCode(firstJson) == "6533") {
+                        return Result.Error(canadaErrorMessage(firstJson, "Start failed"), firstOutcome.code)
+                    }
+                    val retryRemote = !firstRemote
+                    val retryResponse = getCanadaApiService().startEvClimate(
+                        accessToken, vehicleId, pAuth, deviceId, payload(useRemoteControl = retryRemote)
+                    )
+                    when (val retryOutcome = classifyCanadaCommandResponse(retryResponse.code(), readRawResponseBody(retryResponse), "Start")) {
+                        CanadaCommandOutcome.Ok -> {
+                            canadaEvUsesRemoteControl[vehicleId] = retryRemote
+                            rememberCanadaCommandCooldown(vehicleId)
+                            Result.Success(Unit)
+                        }
+                        is CanadaCommandOutcome.Failed -> {
+                            rememberCanadaCommandCooldown(vehicleId)
+                            val message = if (canadaErrorCode(firstJson) == "15109") {
+                                "Climate start failed: this vehicle needs the newer Canada climate format, " +
+                                    "and the fallback also failed (${retryOutcome.message})"
+                            } else {
+                                retryOutcome.message
+                            }
+                            Result.Error(message, retryOutcome.code)
+                        }
+                        is CanadaCommandOutcome.AuthFailed ->
+                            Result.Error("Session expired. Please sign in again.", retryOutcome.httpCode)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Start failed")
         }
     }
 
@@ -2930,14 +3161,18 @@ class VehicleRepository @Inject constructor(
             }
         }
         if (isCanadaRegion()) {
-            return runCanadaPinCommand(vin, registrationId, "Start") { accessToken, vehicleId, pAuth, deviceId, pin ->
-                val payload = canadaClimatePayload(pin, tempF, defrost, durationMinutes, isEv)
-                if (isEv) {
-                    getCanadaApiService().startEvClimate(accessToken, vehicleId, pAuth, deviceId, payload)
-                } else {
-                    getCanadaApiService().startEngine(accessToken, vehicleId, pAuth, deviceId, payload)
-                }
-            }
+            return startCanadaClimate(
+                vin = vin,
+                registrationId = registrationId,
+                tempF = tempF,
+                defrost = defrost,
+                durationMinutes = durationMinutes,
+                isEv = isEv,
+                driverSeatHeat = driverSeatHeat,
+                passengerSeatHeat = passengerSeatHeat,
+                rearLeftSeatHeat = rearLeftSeatHeat,
+                rearRightSeatHeat = rearRightSeatHeat
+            )
         }
         if (isEuropeRegion()) {
             return runEuropeCommand(vin, registrationId, "Start") { authorization, vehicleId ->
@@ -3071,8 +3306,35 @@ class VehicleRepository @Inject constructor(
             }
         }
         if (isCanadaRegion()) {
-            return runCanadaPinCommand(vin, registrationId, "Stop Climate") { accessToken, vehicleId, pAuth, deviceId, pin ->
-                getCanadaApiService().stopEvClimate(accessToken, vehicleId, pAuth, deviceId, mapOf("pin" to pin))
+            return try {
+                val vehicleId = registrationId.ifBlank { vin }
+                val remaining = canadaCooldownRemainingMs(vehicleId)
+                if (remaining > 0L) {
+                    return Result.Error(canadaCooldownMessage(remaining))
+                }
+                when (
+                    val result = runCanadaPinCommand(vin, registrationId, "Stop Climate") { accessToken, id, pAuth, deviceId, pin ->
+                        getCanadaApiService().stopEvClimate(accessToken, id, pAuth, deviceId, mapOf("pin" to pin))
+                    }
+                ) {
+                    is Result.Success -> {
+                        rememberCanadaCommandCooldown(vehicleId)
+                        result
+                    }
+                    is Result.Error -> {
+                        if (result.message.contains("90 seconds", ignoreCase = true) ||
+                            result.message.contains("6533") ||
+                            result.message.contains("earlier inquiry", ignoreCase = true) ||
+                            result.message.contains("earlier request", ignoreCase = true)
+                        ) {
+                            rememberCanadaCommandCooldown(vehicleId)
+                        }
+                        result
+                    }
+                    else -> result
+                }
+            } catch (e: Exception) {
+                Result.Error(e.message ?: "Stop Climate failed")
             }
         }
         if (isEuropeRegion()) {
@@ -3123,6 +3385,7 @@ class VehicleRepository @Inject constructor(
         rearLeftSeatHeat: Int = 2,
         rearRightSeatHeat: Int = 2,
         heatedSteering: Boolean = false,
+        durationMinutes: Int = 10,
         isEv: Boolean = false,
         registrationId: String = "",
         generation: String = "3",
@@ -3142,6 +3405,7 @@ class VehicleRepository @Inject constructor(
             rearLeftSeatHeat = rearLeftSeatHeat,
             rearRightSeatHeat = rearRightSeatHeat,
             heatedSteering = heatedSteering,
+            durationMinutes = durationMinutes,
             isEv = isEv,
             registrationId = registrationId,
             generation = generation,

@@ -2,6 +2,7 @@ package com.bluedeck.data.repository
 
 import com.bluedeck.data.models.CommandHistoryEntry
 import com.bluedeck.data.models.WidgetVehicleSnapshot
+import com.bluedeck.data.models.coerceClimateDurationMinutes
 import com.bluedeck.data.obd.ObdTransportType
 import android.content.Context
 import androidx.datastore.core.DataStore
@@ -54,6 +55,7 @@ class PreferencesManager @Inject constructor(
         val WALK_AWAY_BLUETOOTH_NAME = stringPreferencesKey("walk_away_bluetooth_name")
         val LAST_STATUS_REFRESH = longPreferencesKey("last_status_refresh")
         val DEFAULT_CLIMATE_TEMP = stringPreferencesKey("default_climate_temp")
+        val DEFAULT_CLIMATE_DURATION_MINUTES = intPreferencesKey("default_climate_duration_minutes")
         val VALET_MODE_ENABLED = booleanPreferencesKey("valet_mode_enabled")
         val ACTIVE_DRIVER_PROFILE_ID = stringPreferencesKey("active_driver_profile_id")
         val THEME_MODE = stringPreferencesKey("theme_mode")
@@ -63,6 +65,7 @@ class PreferencesManager @Inject constructor(
         val PROFILE_VALET_PHOTO_URI = stringPreferencesKey("profile_valet_photo_uri")
         val CUSTOM_DASHBOARD_IMAGE_URI = stringPreferencesKey("custom_dashboard_image_uri")
         val COMMAND_HISTORY_JSON = stringPreferencesKey("command_history_json")
+        val SHOW_RECENT_COMMANDS = booleanPreferencesKey("show_recent_commands")
         val WIDGET_VEHICLE_NAME = stringPreferencesKey("widget_vehicle_name")
         val WIDGET_VEHICLE_VIN = stringPreferencesKey("widget_vehicle_vin")
         val WIDGET_VEHICLE_ID = stringPreferencesKey("widget_vehicle_id")
@@ -265,6 +268,14 @@ class PreferencesManager @Inject constructor(
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[DEFAULT_CLIMATE_TEMP] ?: "72" }
 
+    val defaultClimateDurationMinutes: Flow<Int> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map {
+            coerceClimateDurationMinutes(
+                it[DEFAULT_CLIMATE_DURATION_MINUTES]
+                    ?: com.bluedeck.data.models.DEFAULT_CLIMATE_DURATION_MINUTES
+            )
+        }
 
     val valetModeEnabled: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -303,6 +314,10 @@ class PreferencesManager @Inject constructor(
     val commandHistory: Flow<List<CommandHistoryEntry>> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs -> parseCommandHistory(prefs[COMMAND_HISTORY_JSON].orEmpty()) }
+
+    val showRecentCommands: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[SHOW_RECENT_COMMANDS] ?: true }
 
     val widgetVehicleSnapshot: Flow<WidgetVehicleSnapshot> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -459,6 +474,24 @@ class PreferencesManager @Inject constructor(
         dataStore.edit { prefs ->
             if (pin.isBlank()) prefs.remove(SERVICE_PIN) else prefs[SERVICE_PIN] = pin
         }
+        clearOneShotServicePin()
+    }
+
+    /** In-memory PIN for a single command when the user declines "Save PIN". */
+    @Volatile
+    private var oneShotServicePin: String? = null
+
+    fun setOneShotServicePin(pin: String?) {
+        oneShotServicePin = pin?.trim()?.takeIf { it.length == 4 }
+    }
+
+    fun clearOneShotServicePin() {
+        oneShotServicePin = null
+    }
+
+    suspend fun effectiveServicePin(): String {
+        oneShotServicePin?.let { return it }
+        return servicePin.first().orEmpty().trim()
     }
 
     suspend fun setRegion(region: String) {
@@ -601,6 +634,11 @@ class PreferencesManager @Inject constructor(
         dataStore.edit { it[DEFAULT_CLIMATE_TEMP] = temp }
     }
 
+    suspend fun setDefaultClimateDurationMinutes(minutes: Int) {
+        dataStore.edit {
+            it[DEFAULT_CLIMATE_DURATION_MINUTES] = coerceClimateDurationMinutes(minutes)
+        }
+    }
 
     suspend fun setValetModeEnabled(enabled: Boolean) {
         dataStore.edit { it[VALET_MODE_ENABLED] = enabled }
@@ -616,6 +654,10 @@ class PreferencesManager @Inject constructor(
 
     suspend fun setUseDynamicColor(enabled: Boolean) {
         dataStore.edit { it[USE_DYNAMIC_COLOR] = enabled }
+    }
+
+    suspend fun setShowRecentCommands(enabled: Boolean) {
+        dataStore.edit { it[SHOW_RECENT_COMMANDS] = enabled }
     }
 
     suspend fun setDriverProfilePhotoUri(profileId: String, photoUri: String?) {

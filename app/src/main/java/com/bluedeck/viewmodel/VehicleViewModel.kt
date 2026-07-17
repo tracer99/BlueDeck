@@ -41,6 +41,10 @@ data class FeatureNotice(
     val message: String
 )
 
+data class ServicePinPromptState(
+    val commandLabel: String
+)
+
 @HiltViewModel
 class VehicleViewModel @Inject constructor(
     private val repository: VehicleRepository,
@@ -73,8 +77,17 @@ class VehicleViewModel @Inject constructor(
     private val _commandState = MutableStateFlow(CommandState())
     val commandState: StateFlow<CommandState> = _commandState.asStateFlow()
 
+    private val _servicePinPrompt = MutableStateFlow<ServicePinPromptState?>(null)
+    val servicePinPrompt: StateFlow<ServicePinPromptState?> = _servicePinPrompt.asStateFlow()
+
+    @Volatile
+    private var actionAwaitingServicePin: (() -> Unit)? = null
+
     val commandHistory = preferencesManager.commandHistory
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val showRecentCommands = preferencesManager.showRecentCommands
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     // ─── Remote start settings ─────────────────────────────────────────────────
     private val _remoteStartSettings = MutableStateFlow(RemoteStartSettings())
@@ -117,12 +130,20 @@ class VehicleViewModel @Inject constructor(
     private val _featureNotice = MutableStateFlow<FeatureNotice?>(null)
     val featureNotice: StateFlow<FeatureNotice?> = _featureNotice.asStateFlow()
 
+    /** Keep climate UI "On" after start until the vehicle confirms or this expires. */
+    private var climateOptimisticUntilMs: Long = 0L
+    private var pendingClimateOptimisticSettings: RemoteStartSettings? = null
+
     init {
         viewModelScope.launch {
             restoreCachedSelectedVehicle()
             loadVehicles()
             val defaultTemp = preferencesManager.defaultClimateTemp.first()
-            _remoteStartSettings.value = _remoteStartSettings.value.copy(tempF = defaultTemp)
+            val defaultDuration = preferencesManager.defaultClimateDurationMinutes.first()
+            _remoteStartSettings.value = _remoteStartSettings.value.copy(
+                tempF = defaultTemp,
+                durationMinutes = defaultDuration
+            )
             val activeProfile = preferencesManager.activeDriverProfileId.first()
             val profilePhotos = preferencesManager.driverProfilePhotoUris.first()
             _driverProfiles.value = _driverProfiles.value.map {
@@ -130,6 +151,13 @@ class VehicleViewModel @Inject constructor(
                     isActive = it.id == activeProfile,
                     photoUri = profilePhotos[it.id]
                 )
+            }
+        }
+        viewModelScope.launch {
+            preferencesManager.defaultClimateDurationMinutes.collect { minutes ->
+                if (_remoteStartSettings.value.durationMinutes != minutes) {
+                    _remoteStartSettings.value = _remoteStartSettings.value.copy(durationMinutes = minutes)
+                }
             }
         }
     }
@@ -237,15 +265,16 @@ class VehicleViewModel @Inject constructor(
                 brandIndicator = vehicle.brandIndicator
             )) {
                 is Result.Success -> {
-                    _vehicleStatus.value = result.data
-                    cacheStatusForWidget(vehicle, result.data, "Updated from BlueDeck")
+                    val status = retainOptimisticClimateIfNeeded(result.data)
+                    _vehicleStatus.value = status
+                    cacheStatusForWidget(vehicle, status, "Updated from BlueDeck")
                     repository.mergeSeatConfigurations(vehicle).let { merged ->
                         if (merged.seatConfigurations != vehicle.seatConfigurations) {
                             _selectedVehicle.value = merged
                             _vehicles.value = _vehicles.value.map { if (it.vin == merged.vin) merged else it }
                         }
                     }
-                    result
+                    Result.Success(status)
                 }
                 is Result.Error -> {
                     _statusError.value = result.message
@@ -329,7 +358,8 @@ class VehicleViewModel @Inject constructor(
         driverSeat: Int = 2,
         passengerSeat: Int = 2,
         rearLeftSeat: Int = 2,
-        rearRightSeat: Int = 2
+        rearRightSeat: Int = 2,
+        durationMinutes: Int = _remoteStartSettings.value.durationMinutes
     ) {
         lockVehicleThenStart(
             nextActionLabel = "climate",
@@ -341,7 +371,8 @@ class VehicleViewModel @Inject constructor(
                     driverSeat = driverSeat,
                     passengerSeat = passengerSeat,
                     rearLeftSeat = rearLeftSeat,
-                    rearRightSeat = rearRightSeat
+                    rearRightSeat = rearRightSeat,
+                    durationMinutes = durationMinutes
                 )
             }
         )
@@ -351,59 +382,62 @@ class VehicleViewModel @Inject constructor(
         nextActionLabel: String,
         afterLock: () -> Unit
     ) {
-        viewModelScope.launch {
-            val vehicle = _selectedVehicle.value
-            if (vehicle == null) {
-                _commandState.value = CommandState(CommandStatus.ERROR, "Lock failed", "No vehicle selected")
-                delay(3000)
-                _commandState.value = CommandState()
-                return@launch
-            }
-
-            _commandState.value = CommandState(
-                status = CommandStatus.LOADING,
-                message = "Locking vehicle…",
-                detail = "Climate/remote start requires locked doors. Sending lock request first…"
-            )
-            preferencesManager.setWidgetMessage("Locking vehicle")
-            VehicleWidgetProvider.refreshAll(appContext)
-
-            when (val lockResult = repository.lockDoors(
-                vin = vehicle.vin,
-                registrationId = vehicle.regId,
-                generation = vehicle.generation,
-                brandIndicator = vehicle.brandIndicator
-            )) {
-                is Result.Success -> {
-                    val serviceBrand = vehicle.serviceBrandName
-                    val lockedStatus = _vehicleStatus.value?.copy(doorLock = true, doorLockStatus = "LOCKED")
-                    if (lockedStatus != null) {
-                        _vehicleStatus.value = lockedStatus
-                        cacheStatusForWidget(vehicle, lockedStatus, "Locked; starting ${nextActionLabel.lowercase()}")
-                    }
-                    addCommandHistory("Lock doors", "Accepted by $serviceBrand; starting $nextActionLabel", true)
-                    _commandState.value = CommandState(
-                        status = CommandStatus.ACCEPTED,
-                        message = "Vehicle locked",
-                        detail = "Starting $nextActionLabel next…"
-                    )
-                    delay(2500)
-                    afterLock()
-                }
-                is Result.Error -> {
-                    val detail = lockResult.message
-                    _commandState.value = CommandState(
-                        status = CommandStatus.ERROR,
-                        message = "Lock failed",
-                        detail = "Could not lock the vehicle, so $nextActionLabel was not started. $detail"
-                    )
-                    addCommandHistory("Lock doors", detail, false)
-                    preferencesManager.setWidgetMessage("Lock failed")
-                    VehicleWidgetProvider.refreshAll(appContext)
-                    delay(4000)
+        withServicePin("Lock & $nextActionLabel") {
+            viewModelScope.launch {
+                val vehicle = _selectedVehicle.value
+                if (vehicle == null) {
+                    _commandState.value = CommandState(CommandStatus.ERROR, "Lock failed", "No vehicle selected")
+                    delay(3000)
                     _commandState.value = CommandState()
+                    return@launch
                 }
-                else -> Unit
+
+                _commandState.value = CommandState(
+                    status = CommandStatus.LOADING,
+                    message = "Locking vehicle…",
+                    detail = "Climate/remote start requires locked doors. Sending lock request first…"
+                )
+                preferencesManager.setWidgetMessage("Locking vehicle")
+                VehicleWidgetProvider.refreshAll(appContext)
+
+                when (val lockResult = repository.lockDoors(
+                    vin = vehicle.vin,
+                    registrationId = vehicle.regId,
+                    generation = vehicle.generation,
+                    brandIndicator = vehicle.brandIndicator
+                )) {
+                    is Result.Success -> {
+                        val serviceBrand = vehicle.serviceBrandName
+                        val lockedStatus = _vehicleStatus.value?.copy(doorLock = true, doorLockStatus = "LOCKED")
+                        if (lockedStatus != null) {
+                            _vehicleStatus.value = lockedStatus
+                            cacheStatusForWidget(vehicle, lockedStatus, "Locked; starting ${nextActionLabel.lowercase()}")
+                        }
+                        addCommandHistory("Lock doors", "Accepted by $serviceBrand; starting $nextActionLabel", true)
+                        _commandState.value = CommandState(
+                            status = CommandStatus.ACCEPTED,
+                            message = "Vehicle locked",
+                            detail = "Starting $nextActionLabel next…"
+                        )
+                        delay(2500)
+                        afterLock()
+                    }
+                    is Result.Error -> {
+                        preferencesManager.clearOneShotServicePin()
+                        val detail = lockResult.message
+                        _commandState.value = CommandState(
+                            status = CommandStatus.ERROR,
+                            message = "Lock failed",
+                            detail = "Could not lock the vehicle, so $nextActionLabel was not started. $detail"
+                        )
+                        addCommandHistory("Lock doors", detail, false)
+                        preferencesManager.setWidgetMessage("Lock failed")
+                        VehicleWidgetProvider.refreshAll(appContext)
+                        delay(4000)
+                        _commandState.value = CommandState()
+                    }
+                    else -> Unit
+                }
             }
         }
     }
@@ -506,12 +540,13 @@ class VehicleViewModel @Inject constructor(
         driverSeat: Int = 2,
         passengerSeat: Int = 2,
         rearLeftSeat: Int = 2,
-        rearRightSeat: Int = 2
+        rearRightSeat: Int = 2,
+        durationMinutes: Int = _remoteStartSettings.value.durationMinutes
     ) = sendCommand(
         title = "Start climate",
         loadingMsg = "Sending climate start…",
         successMsg = "Climate on",
-        historyDetail = "Cabin ${formatClimateHistoryTemp(tempF)}${if (defrost) " · defrost" else ""}${if (heatedSteering) " · heated wheel" else ""}",
+        historyDetail = "Cabin ${formatClimateHistoryTemp(tempF)} · ${durationMinutes} min${if (defrost) " · defrost" else ""}${if (heatedSteering) " · heated wheel" else ""}",
         forceRefreshAfterCommand = true,
         onAccepted = {
             applyOptimisticClimateStarted(
@@ -523,7 +558,8 @@ class VehicleViewModel @Inject constructor(
                     driverSeatHeat = driverSeat,
                     passengerSeatHeat = passengerSeat,
                     rearLeftSeatHeat = rearLeftSeat,
-                    rearRightSeatHeat = rearRightSeat
+                    rearRightSeatHeat = rearRightSeat,
+                    durationMinutes = durationMinutes
                 )
             )
         },
@@ -538,7 +574,8 @@ class VehicleViewModel @Inject constructor(
                     driverSeatHeat = driverSeat,
                     passengerSeatHeat = passengerSeat,
                     rearLeftSeatHeat = rearLeftSeat,
-                    rearRightSeatHeat = rearRightSeat
+                    rearRightSeatHeat = rearRightSeat,
+                    durationMinutes = durationMinutes
                 )
             )
         }
@@ -562,6 +599,7 @@ class VehicleViewModel @Inject constructor(
             passengerSeatHeat = clamped.passengerSeat,
             rearLeftSeatHeat = clamped.rearLeftSeat,
             rearRightSeatHeat = clamped.rearRightSeat,
+            durationMinutes = durationMinutes,
             isEv = vehicle.isEV,
             registrationId = vehicle.regId,
             generation = vehicle.generation,
@@ -901,6 +939,7 @@ class VehicleViewModel @Inject constructor(
         _remoteStartSettings.value = settings
         viewModelScope.launch {
             preferencesManager.setDefaultClimateTemp(settings.tempF)
+            preferencesManager.setDefaultClimateDurationMinutes(settings.durationMinutes)
         }
     }
 
@@ -909,6 +948,8 @@ class VehicleViewModel @Inject constructor(
     }
 
     private fun applyOptimisticClimateStarted(settings: RemoteStartSettings) {
+        pendingClimateOptimisticSettings = settings
+        climateOptimisticUntilMs = System.currentTimeMillis() + CLIMATE_OPTIMISTIC_HOLD_MS
         val base = _vehicleStatus.value ?: VehicleStatusData()
         _vehicleStatus.value = optimisticClimateStartedStatus(base, settings)
     }
@@ -931,6 +972,8 @@ class VehicleViewModel @Inject constructor(
     )
 
     private fun applyOptimisticClimateStopped() {
+        pendingClimateOptimisticSettings = null
+        climateOptimisticUntilMs = 0L
         val base = _vehicleStatus.value ?: VehicleStatusData()
         _vehicleStatus.value = optimisticClimateStoppedStatus(base)
     }
@@ -943,7 +986,59 @@ class VehicleViewModel @Inject constructor(
         seatHeaterVentInfo = SeatHeaterVentInfo()
     )
 
+    private fun retainOptimisticClimateIfNeeded(refreshed: VehicleStatusData): VehicleStatusData {
+        val settings = pendingClimateOptimisticSettings ?: return refreshed
+        if (System.currentTimeMillis() >= climateOptimisticUntilMs) {
+            pendingClimateOptimisticSettings = null
+            return refreshed
+        }
+        if (refreshed.airCtrlOn) {
+            // Vehicle confirmed climate is running.
+            pendingClimateOptimisticSettings = null
+            climateOptimisticUntilMs = 0L
+            return refreshed
+        }
+        return optimisticClimateStartedStatus(refreshed, settings)
+    }
+
+    companion object {
+        private const val CLIMATE_OPTIMISTIC_HOLD_MS = 90_000L
+    }
+
     // ─── Helper ────────────────────────────────────────────────────────────────
+    fun submitServicePinPrompt(pin: String, savePin: Boolean) {
+        viewModelScope.launch {
+            val trimmed = pin.trim()
+            if (trimmed.length != 4) return@launch
+            if (savePin) {
+                preferencesManager.setServicePin(trimmed)
+            } else {
+                preferencesManager.setOneShotServicePin(trimmed)
+            }
+            _servicePinPrompt.value = null
+            val pending = actionAwaitingServicePin
+            actionAwaitingServicePin = null
+            pending?.invoke()
+        }
+    }
+
+    fun dismissServicePinPrompt() {
+        actionAwaitingServicePin = null
+        _servicePinPrompt.value = null
+        preferencesManager.clearOneShotServicePin()
+    }
+
+    private fun withServicePin(commandLabel: String, block: () -> Unit) {
+        viewModelScope.launch {
+            if (preferencesManager.effectiveServicePin().isNotBlank()) {
+                block()
+                return@launch
+            }
+            actionAwaitingServicePin = block
+            _servicePinPrompt.value = ServicePinPromptState(commandLabel = commandLabel)
+        }
+    }
+
     private fun sendCommand(
         title: String,
         loadingMsg: String,
@@ -954,81 +1049,87 @@ class VehicleViewModel @Inject constructor(
         mergeRefreshedStatus: ((VehicleStatusData) -> VehicleStatusData)? = null,
         action: suspend () -> Result<Unit>
     ) {
-        viewModelScope.launch {
-            _commandState.value = CommandState(
-                status = CommandStatus.LOADING,
-                message = loadingMsg,
-                detail = "Sending request to vehicle service…"
-            )
-            preferencesManager.setWidgetMessage(loadingMsg.removeSuffix("…"))
-            VehicleWidgetProvider.refreshAll(appContext)
-
-            when (val result = action()) {
-                is Result.Success -> {
-                    onAccepted?.invoke()
-                    val selectedForBrand = _selectedVehicle.value
-                    val serviceBrand = selectedForBrand?.serviceBrandName ?: "vehicle service"
-                    val acceptedLabel = if (selectedForBrand != null) "Accepted by $serviceBrand" else "Accepted by vehicle service"
+        withServicePin(title) {
+            viewModelScope.launch {
+                try {
                     _commandState.value = CommandState(
-                        status = CommandStatus.ACCEPTED,
-                        message = acceptedLabel,
-                        detail = "$title request was accepted by $serviceBrand. Waiting for vehicle status…"
+                        status = CommandStatus.LOADING,
+                        message = loadingMsg,
+                        detail = "Sending request to vehicle service…"
                     )
-                    addCommandHistory(title, historyDetail.ifBlank { acceptedLabel }, true)
-                    delay(900)
-
-                    val selected = _selectedVehicle.value
-                    if (selected != null) {
-                        _commandState.value = CommandState(
-                            status = CommandStatus.REFRESHING,
-                            message = "Waiting for vehicle update…",
-                            detail = "Refreshing status after command"
-                        )
-                        when (val refreshResult = refreshStatusInternal(selected, forceFromServer = forceRefreshAfterCommand, showLoading = false)) {
-                            is Result.Success -> {
-                                val mergedStatus = mergeRefreshedStatus?.invoke(refreshResult.data)
-                                if (mergedStatus != null && mergedStatus != refreshResult.data) {
-                                    _vehicleStatus.value = mergedStatus
-                                    cacheStatusForWidget(selected, mergedStatus, "Command accepted; awaiting vehicle-confirmed status")
-                                }
-                                _commandState.value = CommandState(
-                                    status = CommandStatus.SUCCESS,
-                                    message = successMsg,
-                                    detail = if (mergedStatus != null && mergedStatus != refreshResult.data) {
-                                        "Command accepted; vehicle status may take another refresh to confirm"
-                                    } else {
-                                        "Status refreshed"
-                                    }
-                                )
-                            }
-                            is Result.Error -> _commandState.value = CommandState(
-                                status = CommandStatus.SUCCESS,
-                                message = successMsg,
-                                detail = "Command was accepted, but status refresh failed: ${refreshResult.message}"
-                            )
-                            else -> _commandState.value = CommandState(CommandStatus.SUCCESS, successMsg)
-                        }
-                    } else {
-                        _commandState.value = CommandState(CommandStatus.SUCCESS, successMsg)
-                    }
-
-                    delay(2500)
-                    _commandState.value = CommandState()
-                }
-                is Result.Error -> {
-                    val detail = result.message
-                    _commandState.value = CommandState(
-                        status = CommandStatus.ERROR,
-                        message = "$title failed",
-                        detail = detail
-                    )
-                    addCommandHistory(title, detail, false)
-                    preferencesManager.setWidgetMessage("$title failed")
+                    preferencesManager.setWidgetMessage(loadingMsg.removeSuffix("…"))
                     VehicleWidgetProvider.refreshAll(appContext)
-                    delay(3500)
-                    _commandState.value = CommandState()
+
+                    when (val result = action()) {
+                        is Result.Success -> {
+                            onAccepted?.invoke()
+                            val selectedForBrand = _selectedVehicle.value
+                            val serviceBrand = selectedForBrand?.serviceBrandName ?: "vehicle service"
+                            val acceptedLabel = if (selectedForBrand != null) "Accepted by $serviceBrand" else "Accepted by vehicle service"
+                            _commandState.value = CommandState(
+                                status = CommandStatus.ACCEPTED,
+                                message = acceptedLabel,
+                                detail = "$title request was accepted by $serviceBrand. Waiting for vehicle status…"
+                            )
+                            addCommandHistory(title, historyDetail.ifBlank { acceptedLabel }, true)
+                            delay(900)
+
+                            val selected = _selectedVehicle.value
+                            if (selected != null) {
+                                _commandState.value = CommandState(
+                                    status = CommandStatus.REFRESHING,
+                                    message = "Waiting for vehicle update…",
+                                    detail = "Refreshing status after command"
+                                )
+                                when (val refreshResult = refreshStatusInternal(selected, forceFromServer = forceRefreshAfterCommand, showLoading = false)) {
+                                    is Result.Success -> {
+                                        val mergedStatus = mergeRefreshedStatus?.invoke(refreshResult.data)
+                                        if (mergedStatus != null && mergedStatus != refreshResult.data) {
+                                            _vehicleStatus.value = mergedStatus
+                                            cacheStatusForWidget(selected, mergedStatus, "Command accepted; awaiting vehicle-confirmed status")
+                                        }
+                                        _commandState.value = CommandState(
+                                            status = CommandStatus.SUCCESS,
+                                            message = successMsg,
+                                            detail = if (mergedStatus != null && mergedStatus != refreshResult.data) {
+                                                "Command accepted; vehicle status may take another refresh to confirm"
+                                            } else {
+                                                "Status refreshed"
+                                            }
+                                        )
+                                    }
+                                    is Result.Error -> _commandState.value = CommandState(
+                                        status = CommandStatus.SUCCESS,
+                                        message = successMsg,
+                                        detail = "Command was accepted, but status refresh failed: ${refreshResult.message}"
+                                    )
+                                    else -> _commandState.value = CommandState(CommandStatus.SUCCESS, successMsg)
+                                }
+                            } else {
+                                _commandState.value = CommandState(CommandStatus.SUCCESS, successMsg)
+                            }
+
+                            delay(2500)
+                            _commandState.value = CommandState()
+                        }
+                        is Result.Error -> {
+                            val detail = result.message
+                            _commandState.value = CommandState(
+                                status = CommandStatus.ERROR,
+                                message = "$title failed",
+                                detail = detail
+                            )
+                            addCommandHistory(title, detail, false)
+                            preferencesManager.setWidgetMessage("$title failed")
+                            VehicleWidgetProvider.refreshAll(appContext)
+                            delay(3500)
+                            _commandState.value = CommandState()
+                        }
+                        else -> Unit
+                    }
+                } finally {
+                    preferencesManager.clearOneShotServicePin()
                 }
-                else -> Unit
             }
         }
     }

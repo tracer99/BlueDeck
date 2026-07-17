@@ -119,6 +119,9 @@ fun List<SeatConfig>.seatConfigFor(vararg ids: String): SeatConfig? {
 private fun resolveSeatClimate(configs: List<SeatConfig>, vararg ids: String): SeatClimateCapabilities {
     val config = configs.seatConfigFor(*ids)
     // Partial seat list from the API (e.g. front seats only) means absent positions are not equipped.
+    // When the API reports no seat configs at all (common for Canada), keep heated seats as
+    // unknown/shown, but do NOT assume ventilated/cooled seats — many trims (e.g. IONIQ 9)
+    // have heat without ventilation.
     val heatState = when {
         config != null -> config.heatSupportState()
         configs.isNotEmpty() -> SupportState.NOT_SUPPORTED
@@ -127,7 +130,7 @@ private fun resolveSeatClimate(configs: List<SeatConfig>, vararg ids: String): S
     val ventState = when {
         config != null -> config.ventSupportState()
         configs.isNotEmpty() -> SupportState.NOT_SUPPORTED
-        else -> SupportState.NOT_REPORTED
+        else -> SupportState.NOT_SUPPORTED
     }
     return SeatClimateCapabilities(
         config = config,
@@ -165,7 +168,8 @@ private fun clampSeatLevel(level: Int, seat: SeatClimateCapabilities): Int {
     val isVent = level in 3..5
     return when {
         isHeat && !seat.showHeat -> 2
-        isVent && !seat.showVent -> 2
+        // Only send vent/cool levels when the API confirmed ventilation support.
+        isVent && !seat.ventCapableForSelector -> 2
         !isHeat && !isVent && level != 2 && level != 0 -> {
             if (seat.showHeat) level else 2
         }

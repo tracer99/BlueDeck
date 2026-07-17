@@ -1,14 +1,16 @@
 package com.bluedeck.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,10 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluedeck.data.obd.ObdConnectionState
+import com.bluedeck.data.obd.ObdTransportType
 import com.bluedeck.data.obd.db.ObdSessionEntity
 import com.bluedeck.viewmodel.ObdViewModel
 import com.bluedeck.viewmodel.VehicleViewModel
@@ -39,6 +43,40 @@ fun ObdDiagnosticsScreen(
     val config by obdViewModel.adapterConfig.collectAsStateWithLifecycle()
     val statusMessage by obdViewModel.statusMessage.collectAsStateWithLifecycle()
     val selectedVehicle by vehicleViewModel.selectedVehicle.collectAsStateWithLifecycle()
+
+    var pendingBluetoothAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            grants[Manifest.permission.BLUETOOTH_CONNECT] == true
+        val action = pendingBluetoothAction
+        pendingBluetoothAction = null
+        if (granted) {
+            action?.invoke()
+        } else {
+            obdViewModel.reportStatus(
+                "Bluetooth permission is required to connect to the OBD adapter"
+            )
+        }
+    }
+
+    fun withBluetoothPermission(action: () -> Unit) {
+        if (config.transportType != ObdTransportType.BLUETOOTH) {
+            action()
+            return
+        }
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingBluetoothAction = action
+            btPermissionLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+        } else {
+            action()
+        }
+    }
 
     LaunchedEffect(statusMessage) {
         statusMessage?.let { kotlinx.coroutines.delay(4000); obdViewModel.clearStatusMessage() }
@@ -72,14 +110,16 @@ fun ObdDiagnosticsScreen(
                 ConnectionCard(
                     connectionState = connectionState,
                     adapterLabel = when (config.transportType) {
-                        com.bluedeck.data.obd.ObdTransportType.BLUETOOTH ->
+                        ObdTransportType.BLUETOOTH ->
                             config.bluetoothName ?: config.bluetoothAddress ?: "No adapter selected"
-                        com.bluedeck.data.obd.ObdTransportType.WIFI ->
+                        ObdTransportType.WIFI ->
                             "${config.wifiHost}:${config.wifiPort}"
                     },
-                    onConnect = { obdViewModel.connect() },
+                    onConnect = { withBluetoothPermission { obdViewModel.connect() } },
                     onDisconnect = { obdViewModel.disconnect() },
-                    onStartLogging = { obdViewModel.startLogging(selectedVehicle?.vin) },
+                    onStartLogging = {
+                        withBluetoothPermission { obdViewModel.startLogging(selectedVehicle?.vin) }
+                    },
                     onStopLogging = { obdViewModel.stopLogging() }
                 )
             }

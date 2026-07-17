@@ -34,12 +34,26 @@ class VehicleCapabilitiesTest {
     }
 
     @Test
-    fun missingSeatConfig_showsAllSeats() {
+    fun missingSeatConfig_showsHeatButNotVent() {
         val vehicle = Vehicle()
         val caps = vehicle.resolveCapabilities()
         assertTrue(caps.rearLeft.showHeat)
         assertTrue(caps.rearRight.showHeat)
-        assertTrue(caps.driver.showVent)
+        assertTrue(caps.driver.showHeat)
+        // Without API seat configs, do not assume cooled/ventilated seats (e.g. IONIQ 9).
+        assertFalse(caps.driver.showVent)
+        assertFalse(caps.driver.ventCapableForSelector)
+        assertFalse(caps.passenger.ventCapableForSelector)
+    }
+
+    @Test
+    fun missingSeatConfig_clampsCoolPresetOff() {
+        val vehicle = Vehicle()
+        val clamped = vehicle.clampClimateSeatSettings(
+            ClimateSeatSettings(driverSeat = 4, passengerSeat = 4, rearLeftSeat = 2, rearRightSeat = 2)
+        )
+        assertEquals(2, clamped.driverSeat)
+        assertEquals(2, clamped.passengerSeat)
     }
 
     @Test
@@ -69,6 +83,8 @@ class VehicleCapabilitiesTest {
     @Test
     fun clampSetsUnsupportedRearSeatsOff() {
         val vehicle = vehicleWithSeats(
+            SeatConfig("1", heatingCapable = "Y"),
+            SeatConfig("2", heatingCapable = "Y"),
             SeatConfig("3", heatingCapable = "N"),
             SeatConfig("4", heatingCapable = "N")
         )
