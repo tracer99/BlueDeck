@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -14,14 +16,14 @@ android {
         applicationId = "com.bluedeck"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "1.10.0"
+        versionCode = 41
+        versionName = "1.10.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Prefer CI/shell env vars; fall back to local.properties for Android Studio.
-    val localProps = java.util.Properties().apply {
+    val localProps = Properties().apply {
         val f = rootProject.file("local.properties")
         if (f.isFile) f.inputStream().use { load(it) }
     }

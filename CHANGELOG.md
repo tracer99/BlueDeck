@@ -13,6 +13,13 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.10.1] - 2026-07-17
+
+### Fixed
+
+- GitHub Release CI: resolve `Properties` in `app/build.gradle.kts` under AGP 9 Kotlin DSL so signed APK builds succeed.
+- Release workflow keystore decode: strip whitespace from `KEYSTORE_BASE64` (common Windows paste issue).
+
 ## [1.10.0] - 2026-07-17
 
 ### Added

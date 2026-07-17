@@ -273,10 +273,23 @@ Encode it and add these repository secrets (**Settings → Secrets and variables
 
 | Secret | Value |
 |--------|--------|
-| `KEYSTORE_BASE64` | `base64 -w0 release.keystore` (macOS: `base64 -i release.keystore`) |
+| `KEYSTORE_BASE64` | Single-line base64 of the keystore file (no PEM headers) |
 | `KEYSTORE_PASSWORD` | Keystore password |
 | `KEY_ALIAS` | Key alias (e.g. `bluedeck`) |
 | `KEY_PASSWORD` | Key password |
+
+Encode the keystore (pick one):
+
+```bash
+# Linux
+base64 -w0 release.keystore | gh secret set KEYSTORE_BASE64
+
+# macOS
+base64 -i release.keystore | tr -d '\n' | gh secret set KEYSTORE_BASE64
+
+# Windows PowerShell (avoid certutil — PEM headers break CI decode)
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("release.keystore")) | gh secret set KEYSTORE_BASE64
+```
 
 Do not commit the keystore; `*.keystore` / `*.jks` are already gitignored.
 
