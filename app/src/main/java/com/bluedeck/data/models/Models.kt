@@ -11,6 +11,14 @@ data class LoginRequest(
     @SerializedName("cvt") val cvt: String = "m"
 )
 
+/** US Hyundai: refresh requires username + password + grant_type + refresh_token together. */
+data class RefreshTokenRequest(
+    @SerializedName("username") val username: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("refresh_token") val refreshToken: String,
+    @SerializedName("grant_type") val grantType: String = "refresh_token"
+)
+
 data class TokenResponse(
     @SerializedName("access_token") val accessToken: String,
     @SerializedName("refresh_token") val refreshToken: String,

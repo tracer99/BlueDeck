@@ -135,9 +135,13 @@ class PreferencesManager @Inject constructor(
     val isLoggedIn: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs ->
-            val token = prefs[ACCESS_TOKEN]
+            val accessToken = prefs[ACCESS_TOKEN]
+            val refreshToken = prefs[REFRESH_TOKEN]
             val expiresAt = prefs[SESSION_EXPIRES_AT] ?: prefs[TOKEN_EXPIRES_AT] ?: 0L
-            !token.isNullOrEmpty() && System.currentTimeMillis() < expiresAt
+            // Stay signed in for the session window whenever we still have tokens to refresh with.
+            // Access-token TTL alone must not bounce the UI to login before a refresh attempt.
+            (!accessToken.isNullOrEmpty() || !refreshToken.isNullOrEmpty()) &&
+                System.currentTimeMillis() < expiresAt
         }
 
     val passwordRequired: Flow<Boolean> = dataStore.data
@@ -159,10 +163,13 @@ class PreferencesManager @Inject constructor(
     val hasRecoverableSession: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { prefs ->
-            val token = prefs[ACCESS_TOKEN]
+            val accessToken = prefs[ACCESS_TOKEN]
+            val refreshToken = prefs[REFRESH_TOKEN]
             val passwordRequired = prefs[PASSWORD_REQUIRED] ?: false
             val expiresAt = prefs[SESSION_EXPIRES_AT] ?: prefs[TOKEN_EXPIRES_AT] ?: 0L
-            !token.isNullOrBlank() && !passwordRequired && System.currentTimeMillis() < expiresAt
+            (!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank()) &&
+                !passwordRequired &&
+                System.currentTimeMillis() < expiresAt
         }
 
     val selectedVin: Flow<String?> = dataStore.data
@@ -429,7 +436,12 @@ class PreferencesManager @Inject constructor(
             prefs[USERNAME] = username
             if (!servicePin.isNullOrBlank()) prefs[SERVICE_PIN] = servicePin
             prefs[TOKEN_EXPIRES_AT] = tokenExpiresAt
-            prefs[SESSION_EXPIRES_AT] = if (stayLoggedIn) now + THIRTY_DAYS_MS else tokenExpiresAt
+            // Access tokens are short-lived (~30m). Keep the UI session alive for the trust
+            // window whenever a refresh token exists so we can renew without bouncing to login.
+            prefs[SESSION_EXPIRES_AT] = when {
+                stayLoggedIn || refreshToken.isNotBlank() -> now + THIRTY_DAYS_MS
+                else -> tokenExpiresAt
+            }
             prefs[PASSWORD_REQUIRED] = false
             prefs[OTP_PENDING] = false
             prefs.remove(OTP_PENDING_USERNAME)

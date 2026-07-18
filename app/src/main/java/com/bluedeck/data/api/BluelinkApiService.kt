@@ -11,6 +11,9 @@ interface BluelinkApiService {
     @POST("v2/ac/oauth/token")
     suspend fun getToken(@Body request: LoginRequest): Response<TokenResponse>
 
+    @POST("v2/ac/oauth/token")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): Response<TokenResponse>
+
     @GET("ac/v2/enrollment/details/{username}")
     suspend fun getVehicles(
         @Header("access_token") accessToken: String,

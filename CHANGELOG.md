@@ -13,6 +13,15 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.11.1] - 2026-07-17
+
+### Fixed
+
+- Frequent unexpected logouts: keep the session on network/transient token-refresh failures instead of wiping tokens.
+- US Hyundai: renew access tokens with the OAuth `refresh_token` grant (plus saved credentials) instead of a full password login every ~30 minutes.
+- Serialize concurrent token refreshes so rotating refresh tokens are not invalidated by parallel app/widget calls.
+- Europe: only treat clear auth failures as session death; retry status fetch after a token refresh before logging out.
+
 ## [1.11.0] - 2026-07-17
 
 ### Added

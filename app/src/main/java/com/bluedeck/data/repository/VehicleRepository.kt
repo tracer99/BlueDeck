@@ -20,6 +20,8 @@ import com.bluedeck.data.auth.PendingOtpChallenge
 import com.bluedeck.data.demo.DemoVehicleStore
 import com.bluedeck.data.models.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -27,6 +29,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.ResponseBody
+import java.io.IOException
 import java.security.SecureRandom
 import kotlin.math.roundToInt
 
@@ -67,6 +70,8 @@ class VehicleRepository @Inject constructor(
 
     private companion object {
         const val CANADA_COMMAND_COOLDOWN_MS = 90_000L
+        /** Shared across Hilt singleton and ad-hoc widget/alarm instances. */
+        private val tokenRefreshMutex = Mutex()
     }
 
     private fun rememberCanadaCommandCooldown(vehicleId: String) {
@@ -189,14 +194,18 @@ class VehicleRepository @Inject constructor(
 
     private suspend fun bearerToken(): String = "Bearer ${getToken()}"
 
-    private suspend fun ensureValidAccessToken(): String {
+    private suspend fun ensureValidAccessToken(): String = tokenRefreshMutex.withLock {
         val accessToken = preferencesManager.accessToken.first().orEmpty()
-        if (accessToken.isBlank()) throw IllegalStateException("Not authenticated")
+        val refreshToken = preferencesManager.refreshToken.first().orEmpty()
+        if (accessToken.isBlank() && refreshToken.isBlank()) {
+            throw IllegalStateException("Not authenticated")
+        }
 
         val expiresAt = preferencesManager.tokenExpiresAt.first()
-        if (expiresAt > System.currentTimeMillis() + 60_000L) return accessToken
+        if (accessToken.isNotBlank() && expiresAt > System.currentTimeMillis() + 60_000L) {
+            return accessToken
+        }
 
-        val refreshToken = preferencesManager.refreshToken.first().orEmpty()
         if (refreshToken.isBlank()) {
             preferencesManager.clearSession(requirePassword = true)
             throw IllegalStateException("Session expired. Please sign in again.")
@@ -208,17 +217,115 @@ class VehicleRepository @Inject constructor(
                 isEuropeRegion() -> refreshEuropeAccessToken(refreshToken)
                 isAustraliaRegion() -> refreshAustraliaAccessToken(refreshToken)
                 isCanadaRegion() -> refreshCanadaAccessToken()
-                else -> refreshPasswordBasedSession()
+                else -> refreshUsHyundaiAccessToken(refreshToken)
             }
         } catch (e: OtpRequiredException) {
             throw e
         } catch (e: Exception) {
-            // Do not continue with a known-expired token. That leaves the app half-authenticated:
-            // navigation still thinks the user is logged in, but vehicle loading fails and the
-            // dashboard shows no selected vehicle. Force the auth state to reset instead.
-            preferencesManager.clearSession(requirePassword = true)
-            throw IllegalStateException(e.message ?: "Session refresh failed. Please sign in again.")
+            if (isHardAuthRefreshFailure(e)) {
+                preferencesManager.clearSession(requirePassword = true)
+                throw IllegalStateException(e.message ?: "Session expired. Please sign in again.")
+            }
+            // Keep tokens on network/transient failures so the user is not bounced to login.
+            throw IllegalStateException(e.message ?: "Could not refresh session. Check your connection and try again.")
         }
+    }
+
+    /**
+     * True when a refresh failure means the stored credentials/tokens are no longer usable.
+     * Network blips and 5xx must not wipe the session (official apps retry; they do not log out).
+     */
+    private fun isHardAuthRefreshFailure(error: Throwable): Boolean {
+        if (error is IOException) return false
+        val message = generateSequence(error) { it.cause }
+            .mapNotNull { it.message }
+            .joinToString(" ")
+            .lowercase()
+        if (message.isBlank()) return false
+        if (
+            message.contains("timeout") ||
+            message.contains("unable to resolve host") ||
+            message.contains("failed to connect") ||
+            message.contains("connection reset") ||
+            message.contains("connection refused") ||
+            message.contains("network") ||
+            message.contains("unreachable") ||
+            message.contains("sslhandshake") ||
+            Regex("\\b5\\d{2}\\b").containsMatchIn(message)
+        ) {
+            return false
+        }
+        return message.contains("invalid_grant") ||
+            message.contains("invalid_token") ||
+            message.contains("invalid token") ||
+            message.contains("invalid refresh") ||
+            message.contains("revoked") ||
+            message.contains("unauthorized") ||
+            message.contains("forbidden") ||
+            message.contains("session expired") ||
+            message.contains("sign in again") ||
+            message.contains("bad credentials") ||
+            message.contains("incorrect username") ||
+            message.contains("incorrect password") ||
+            message.contains("invalid username") ||
+            message.contains("invalid password") ||
+            message.contains("account locked") ||
+            Regex("\\b401\\b").containsMatchIn(message) ||
+            Regex("\\b403\\b").containsMatchIn(message)
+    }
+
+    private suspend fun refreshUsHyundaiAccessToken(refreshToken: String): String {
+        val savedCredentials = secureCredentialsManager.getSavedCredentials()
+        if (savedCredentials == null) {
+            // No password stored — cannot call the US refresh grant; fall back to hard expiry.
+            preferencesManager.clearSession(requirePassword = true)
+            throw IllegalStateException("Session expired. Please sign in again.")
+        }
+
+        val response = try {
+            getApiService().refreshToken(
+                RefreshTokenRequest(
+                    username = savedCredentials.username,
+                    password = savedCredentials.password,
+                    refreshToken = refreshToken
+                )
+            )
+        } catch (e: Exception) {
+            // Fall back to full password login only on soft/transport failures of the refresh call.
+            if (isHardAuthRefreshFailure(e)) throw e
+            return refreshPasswordBasedSession()
+        }
+
+        if (response.isSuccessful) {
+            val token = response.body()
+            val access = token?.accessToken.orEmpty()
+            if (access.isNotBlank()) {
+                preferencesManager.saveSession(
+                    accessToken = access,
+                    refreshToken = token?.refreshToken?.takeIf { it.isNotBlank() } ?: refreshToken,
+                    username = savedCredentials.username,
+                    expiresIn = token?.expiresIn?.toIntOrNull() ?: 1799,
+                    servicePin = savedCredentials.servicePin
+                )
+                return access
+            }
+        }
+
+        val code = response.code()
+        val errorBody = response.errorBody()?.string().orEmpty().lowercase()
+        // Hard reject of the refresh grant — try full login once before giving up.
+        if (code == 401 || code == 403 ||
+            errorBody.contains("invalid") ||
+            errorBody.contains("expired") ||
+            errorBody.contains("revoked")
+        ) {
+            return refreshPasswordBasedSession()
+        }
+        if (code in 500..599) {
+            throw IOException("Token refresh failed ($code)")
+        }
+        // Unknown non-success: prefer password re-login over wiping the session immediately.
+        return refreshPasswordBasedSession()
     }
 
     private suspend fun refreshPasswordBasedSession(): String {
@@ -236,8 +343,11 @@ class VehicleRepository @Inject constructor(
             is Result.Success -> preferencesManager.accessToken.first()
                 ?: throw IllegalStateException("Sign-in succeeded but no access token was saved")
             is Result.Error -> {
-                preferencesManager.clearSession(requirePassword = true)
-                throw IllegalStateException(result.message)
+                val failure = IllegalStateException(result.message)
+                if (result.code == 401 || result.code == 403 || isHardAuthRefreshFailure(failure)) {
+                    preferencesManager.clearSession(requirePassword = true)
+                }
+                throw failure
             }
         }
     }
@@ -782,8 +892,11 @@ class VehicleRepository @Inject constructor(
                 if (result.code == OTP_REQUIRED_CODE) {
                     throw OtpRequiredException(result.message)
                 }
-                preferencesManager.clearSession(requirePassword = true)
-                throw IllegalStateException(result.message)
+                val failure = IllegalStateException(result.message)
+                if (result.code == 401 || result.code == 403 || isHardAuthRefreshFailure(failure)) {
+                    preferencesManager.clearSession(requirePassword = true)
+                }
+                throw failure
             }
         }
     }
@@ -1321,14 +1434,18 @@ class VehicleRepository @Inject constructor(
             json?.objectOrNull("error")?.stringOrNull("errorCode"),
             json?.stringOrNull("resCode")
         ).joinToString(" ").lowercase()
+        // Avoid bare "auth" — it matches unrelated feature/status strings and caused false logouts.
         return message.contains("unauthorized") ||
             message.contains("forbidden") ||
-            message.contains("expired") ||
-            message.contains("invalid token") ||
             message.contains("invalid_token") ||
+            message.contains("invalid token") ||
             message.contains("invalid access") ||
-            message.contains("authentication") ||
-            message.contains("auth")
+            (message.contains("access token") && message.contains("expired")) ||
+            message.contains("token expired") ||
+            message.contains("token is expired") ||
+            message.contains("authentication failed") ||
+            message.contains("not authenticated") ||
+            message.contains("login required")
     }
 
     private fun euRandomHex(length: Int): String {
@@ -1449,10 +1566,21 @@ class VehicleRepository @Inject constructor(
                 if (isLikelyAuthFailure(response.code(), json)) {
                     val refreshToken = preferencesManager.refreshToken.first().orEmpty()
                     if (refreshToken.isNotBlank()) {
-                        val refreshedToken = runCatching { refreshEuropeAccessToken(refreshToken) }.getOrNull()
+                        val refreshOutcome = runCatching { refreshEuropeAccessToken(refreshToken) }
+                        val refreshedToken = refreshOutcome.getOrNull()
                         if (!refreshedToken.isNullOrBlank()) {
                             response = getEuApiService().getVehicles("Bearer $refreshedToken")
                             json = response.body()
+                        } else {
+                            val refreshError = refreshOutcome.exceptionOrNull()
+                            if (refreshError != null && !isHardAuthRefreshFailure(refreshError)) {
+                                return Result.Error(
+                                    refreshError.message ?: "Could not refresh session. Try again.",
+                                    response.code()
+                                )
+                            }
+                            preferencesManager.clearSession(requirePassword = true)
+                            return Result.Error("Session expired. Please sign in again.", response.code())
                         }
                     }
                 }
@@ -1530,33 +1658,82 @@ class VehicleRepository @Inject constructor(
             val vehicleId = resolveEuropeVehicleId(vin, registrationId)
             val api = getEuApiService()
             val ccs2First = generation == "4"
-            val response = if (ccs2First) {
-                if (forceRefresh) api.getLiveCcs2VehicleStatus(bearerToken(), vehicleId) else api.getCachedCcs2VehicleStatus(bearerToken(), vehicleId)
-            } else {
-                if (forceRefresh) api.getLiveVehicleStatus(bearerToken(), vehicleId) else api.getCachedVehicleStatus(bearerToken(), vehicleId)
+
+            suspend fun fetchStatus(authorization: String): Pair<retrofit2.Response<JsonObject>, JsonObject?> {
+                val primary = if (ccs2First) {
+                    if (forceRefresh) api.getLiveCcs2VehicleStatus(authorization, vehicleId)
+                    else api.getCachedCcs2VehicleStatus(authorization, vehicleId)
+                } else {
+                    if (forceRefresh) api.getLiveVehicleStatus(authorization, vehicleId)
+                    else api.getCachedVehicleStatus(authorization, vehicleId)
+                }
+                val fallback = if (!primary.isSuccessful && ccs2First) {
+                    if (forceRefresh) api.getLiveVehicleStatus(authorization, vehicleId)
+                    else api.getCachedVehicleStatus(authorization, vehicleId)
+                } else primary
+                return fallback to fallback.body()
             }
-            val fallbackResponse = if (!response.isSuccessful && ccs2First) {
-                if (forceRefresh) api.getLiveVehicleStatus(bearerToken(), vehicleId) else api.getCachedVehicleStatus(bearerToken(), vehicleId)
-            } else response
-            val json = fallbackResponse.body()
+
+            fun parseStatus(json: JsonObject?): Result<VehicleStatusData> {
+                val resMsg = json?.get("resMsg")
+                val status = when {
+                    resMsg == null || resMsg.isJsonNull -> json
+                    resMsg.isJsonObject && resMsg.asJsonObject.objectOrNull("vehicleStatusInfo") != null ->
+                        resMsg.asJsonObject.objectOrNull("vehicleStatusInfo")
+                    resMsg.isJsonObject && resMsg.asJsonObject.objectOrNull("state")?.objectOrNull("Vehicle") != null ->
+                        resMsg.asJsonObject.objectOrNull("state")?.objectOrNull("Vehicle")
+                    resMsg.isJsonObject -> resMsg.asJsonObject
+                    else -> json
+                } ?: return Result.Error("Could not parse European vehicle status")
+                val data = gson.fromJson(normalizeEuropeDistanceUnits(status), VehicleStatusData::class.java)
+                return Result.Success(data)
+            }
+
+            var (fallbackResponse, json) = fetchStatus(bearerToken())
             if (!fallbackResponse.isSuccessful || euResponseFailed(json)) {
                 if (isLikelyAuthFailure(fallbackResponse.code(), json)) {
-                    preferencesManager.clearSession(requirePassword = true)
-                    return Result.Error("Session expired. Please sign in again.", fallbackResponse.code())
+                    val refreshToken = preferencesManager.refreshToken.first().orEmpty()
+                    if (refreshToken.isNotBlank()) {
+                        val refreshOutcome = runCatching { refreshEuropeAccessToken(refreshToken) }
+                        val refreshedToken = refreshOutcome.getOrNull()
+                        if (!refreshedToken.isNullOrBlank()) {
+                            val retry = fetchStatus("Bearer $refreshedToken")
+                            fallbackResponse = retry.first
+                            json = retry.second
+                            if (fallbackResponse.isSuccessful && !euResponseFailed(json)) {
+                                val parsed = parseStatus(json)
+                                if (parsed is Result.Success) {
+                                    preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
+                                }
+                                return parsed
+                            }
+                        } else {
+                            val refreshError = refreshOutcome.exceptionOrNull()
+                            if (refreshError != null && !isHardAuthRefreshFailure(refreshError)) {
+                                return Result.Error(
+                                    refreshError.message ?: "Could not refresh session. Try again.",
+                                    fallbackResponse.code()
+                                )
+                            }
+                            preferencesManager.clearSession(requirePassword = true)
+                            return Result.Error("Session expired. Please sign in again.", fallbackResponse.code())
+                        }
+                    }
+                    if (isLikelyAuthFailure(fallbackResponse.code(), json)) {
+                        preferencesManager.clearSession(requirePassword = true)
+                        return Result.Error("Session expired. Please sign in again.", fallbackResponse.code())
+                    }
                 }
-                return Result.Error(euErrorMessage(json, "European status fetch failed (${fallbackResponse.code()})"), fallbackResponse.code())
+                return Result.Error(
+                    euErrorMessage(json, "European status fetch failed (${fallbackResponse.code()})"),
+                    fallbackResponse.code()
+                )
             }
-            val resMsg = json?.get("resMsg")
-            val status = when {
-                resMsg == null || resMsg.isJsonNull -> json
-                resMsg.isJsonObject && resMsg.asJsonObject.objectOrNull("vehicleStatusInfo") != null -> resMsg.asJsonObject.objectOrNull("vehicleStatusInfo")
-                resMsg.isJsonObject && resMsg.asJsonObject.objectOrNull("state")?.objectOrNull("Vehicle") != null -> resMsg.asJsonObject.objectOrNull("state")?.objectOrNull("Vehicle")
-                resMsg.isJsonObject -> resMsg.asJsonObject
-                else -> json
-            } ?: return Result.Error("Could not parse European vehicle status")
-            val data = gson.fromJson(normalizeEuropeDistanceUnits(status), VehicleStatusData::class.java)
-            preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
-            Result.Success(data)
+            val parsed = parseStatus(json)
+            if (parsed is Result.Success) {
+                preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
+            }
+            parsed
         } catch (e: Exception) {
             Result.Error(e.message ?: "Europe status network error")
         }
@@ -2912,7 +3089,11 @@ class VehicleRepository @Inject constructor(
                 username = username
             )
             if (!response.isSuccessful && (response.code() == 401 || response.code() == 403)) {
-                token = runCatching { refreshPasswordBasedSession() }.getOrNull().orEmpty()
+                token = runCatching {
+                    val refresh = preferencesManager.refreshToken.first().orEmpty()
+                    if (refresh.isNotBlank()) refreshUsHyundaiAccessToken(refresh)
+                    else refreshPasswordBasedSession()
+                }.getOrNull().orEmpty()
                 if (token.isNotBlank()) {
                     response = getApiService().getVehicles(
                         accessToken = token,
