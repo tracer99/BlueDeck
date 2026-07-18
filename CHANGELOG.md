@@ -13,6 +13,12 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.12.0] - 2026-07-17
+
+### Added
+
+- Remember last-used climate start temperature and duration, and restore them as the dashboard defaults next time.
+
 ## [1.11.1] - 2026-07-17
 
 ### Fixed

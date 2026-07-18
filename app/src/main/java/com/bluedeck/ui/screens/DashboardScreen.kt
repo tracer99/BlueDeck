@@ -336,6 +336,7 @@ fun DashboardScreen(
                             status = vehicleStatus,
                             featureCaps = featureCaps,
                             temperatureUnit = temperatureUnit,
+                            defaultTempF = remoteStartSettings.tempF,
                             defaultDurationMinutes = remoteStartSettings.durationMinutes,
                             onStartClimate = { tempF, defrost, heatedSteering, driverSeat, passengerSeat, rearLeftSeat, rearRightSeat, durationMinutes ->
                                 if (vehicleStatus?.doorsLocked == false) {
@@ -1711,6 +1712,7 @@ fun DashboardClimateControls(
     status: VehicleStatusData?,
     featureCaps: VehicleFeatureCapabilities?,
     temperatureUnit: String,
+    defaultTempF: String,
     defaultDurationMinutes: Int,
     onStartClimate: (Int, Boolean, Boolean, Int, Int, Int, Int, Int) -> Unit,
     onStopClimate: () -> Unit,
@@ -1719,9 +1721,14 @@ fun DashboardClimateControls(
     val isEV = vehicle?.isEV == true
     val climateOn = status?.airCtrlOn == true
     val statusDisplayTemp = status?.airTemp?.let { apiTemperatureToPreferredValue(it.value, it.unit, temperatureUnit) }
+    val rememberedDisplayTemp = climateDisplayValueFromF(defaultTempF, temperatureUnit).toFloat()
     var defrost by remember { mutableStateOf(false) }
     var heatedSteering by remember { mutableStateOf(false) }
-    var displayTemp by remember(temperatureUnit) { mutableFloatStateOf((statusDisplayTemp ?: climateDisplayValueFromF("72", temperatureUnit)).toFloat()) }
+    var displayTemp by remember(temperatureUnit, defaultTempF) {
+        mutableFloatStateOf(
+            if (climateOn && statusDisplayTemp != null) statusDisplayTemp.toFloat() else rememberedDisplayTemp
+        )
+    }
     var durationMinutes by remember(defaultDurationMinutes) { mutableIntStateOf(defaultDurationMinutes) }
     var driverSeat by remember { mutableIntStateOf(2) }
     var passengerSeat by remember { mutableIntStateOf(2) }

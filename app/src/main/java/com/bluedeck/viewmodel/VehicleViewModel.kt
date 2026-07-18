@@ -157,6 +157,13 @@ class VehicleViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            preferencesManager.defaultClimateTemp.collect { temp ->
+                if (_remoteStartSettings.value.tempF != temp) {
+                    _remoteStartSettings.value = _remoteStartSettings.value.copy(tempF = temp)
+                }
+            }
+        }
+        viewModelScope.launch {
             preferencesManager.defaultClimateDurationMinutes.collect { minutes ->
                 if (_remoteStartSettings.value.durationMinutes != minutes) {
                     _remoteStartSettings.value = _remoteStartSettings.value.copy(durationMinutes = minutes)
@@ -355,7 +362,7 @@ class VehicleViewModel @Inject constructor(
     }
 
     fun lockThenStartClimate(
-        tempF: String = "72",
+        tempF: String = _remoteStartSettings.value.tempF,
         defrost: Boolean = false,
         heatedSteering: Boolean = false,
         driverSeat: Int = 2,
@@ -537,7 +544,7 @@ class VehicleViewModel @Inject constructor(
 
     // ─── Climate ───────────────────────────────────────────────────────────────
     fun startClimate(
-        tempF: String = "72",
+        tempF: String = _remoteStartSettings.value.tempF,
         defrost: Boolean = false,
         heatedSteering: Boolean = false,
         driverSeat: Int = 2,
@@ -545,69 +552,72 @@ class VehicleViewModel @Inject constructor(
         rearLeftSeat: Int = 2,
         rearRightSeat: Int = 2,
         durationMinutes: Int = _remoteStartSettings.value.durationMinutes
-    ) = sendCommand(
-        title = "Start climate",
-        loadingMsg = "Sending climate start…",
-        successMsg = "Climate on",
-        historyDetail = "Cabin ${formatClimateHistoryTemp(tempF)} · ${durationMinutes} min${if (defrost) " · defrost" else ""}${if (heatedSteering) " · heated wheel" else ""}",
-        forceRefreshAfterCommand = true,
-        onAccepted = {
-            applyOptimisticClimateStarted(
-                RemoteStartSettings(
-                    tempF = tempF,
-                    hvacOn = true,
-                    defrost = defrost,
+    ) {
+        rememberClimateDefaults(tempF, durationMinutes)
+        sendCommand(
+            title = "Start climate",
+            loadingMsg = "Sending climate start…",
+            successMsg = "Climate on",
+            historyDetail = "Cabin ${formatClimateHistoryTemp(tempF)} · ${durationMinutes} min${if (defrost) " · defrost" else ""}${if (heatedSteering) " · heated wheel" else ""}",
+            forceRefreshAfterCommand = true,
+            onAccepted = {
+                applyOptimisticClimateStarted(
+                    RemoteStartSettings(
+                        tempF = tempF,
+                        hvacOn = true,
+                        defrost = defrost,
+                        heatedSteering = heatedSteering,
+                        driverSeatHeat = driverSeat,
+                        passengerSeatHeat = passengerSeat,
+                        rearLeftSeatHeat = rearLeftSeat,
+                        rearRightSeatHeat = rearRightSeat,
+                        durationMinutes = durationMinutes
+                    )
+                )
+            },
+            mergeRefreshedStatus = { refreshed ->
+                if (refreshed.airCtrlOn) refreshed else optimisticClimateStartedStatus(
+                    refreshed,
+                    RemoteStartSettings(
+                        tempF = tempF,
+                        hvacOn = true,
+                        defrost = defrost,
+                        heatedSteering = heatedSteering,
+                        driverSeatHeat = driverSeat,
+                        passengerSeatHeat = passengerSeat,
+                        rearLeftSeatHeat = rearLeftSeat,
+                        rearRightSeatHeat = rearRightSeat,
+                        durationMinutes = durationMinutes
+                    )
+                )
+            }
+        ) {
+            val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
+            val clamped = vehicle.clampClimateSeatSettings(
+                ClimateSeatSettings(
                     heatedSteering = heatedSteering,
-                    driverSeatHeat = driverSeat,
-                    passengerSeatHeat = passengerSeat,
-                    rearLeftSeatHeat = rearLeftSeat,
-                    rearRightSeatHeat = rearRightSeat,
-                    durationMinutes = durationMinutes
+                    driverSeat = driverSeat,
+                    passengerSeat = passengerSeat,
+                    rearLeftSeat = rearLeftSeat,
+                    rearRightSeat = rearRightSeat
                 )
             )
-        },
-        mergeRefreshedStatus = { refreshed ->
-            if (refreshed.airCtrlOn) refreshed else optimisticClimateStartedStatus(
-                refreshed,
-                RemoteStartSettings(
-                    tempF = tempF,
-                    hvacOn = true,
-                    defrost = defrost,
-                    heatedSteering = heatedSteering,
-                    driverSeatHeat = driverSeat,
-                    passengerSeatHeat = passengerSeat,
-                    rearLeftSeatHeat = rearLeftSeat,
-                    rearRightSeatHeat = rearRightSeat,
-                    durationMinutes = durationMinutes
-                )
+            repository.startClimate(
+                vin = vehicle.vin,
+                tempF = tempF,
+                defrost = defrost,
+                heatedSteering = clamped.heatedSteering,
+                driverSeatHeat = clamped.driverSeat,
+                passengerSeatHeat = clamped.passengerSeat,
+                rearLeftSeatHeat = clamped.rearLeftSeat,
+                rearRightSeatHeat = clamped.rearRightSeat,
+                durationMinutes = durationMinutes,
+                isEv = vehicle.isEV,
+                registrationId = vehicle.regId,
+                generation = vehicle.generation,
+                brandIndicator = vehicle.brandIndicator
             )
         }
-    ) {
-        val vehicle = _selectedVehicle.value ?: return@sendCommand Result.Error("No vehicle selected")
-        val clamped = vehicle.clampClimateSeatSettings(
-            ClimateSeatSettings(
-                heatedSteering = heatedSteering,
-                driverSeat = driverSeat,
-                passengerSeat = passengerSeat,
-                rearLeftSeat = rearLeftSeat,
-                rearRightSeat = rearRightSeat
-            )
-        )
-        repository.startClimate(
-            vin = vehicle.vin,
-            tempF = tempF,
-            defrost = defrost,
-            heatedSteering = clamped.heatedSteering,
-            driverSeatHeat = clamped.driverSeat,
-            passengerSeatHeat = clamped.passengerSeat,
-            rearLeftSeatHeat = clamped.rearLeftSeat,
-            rearRightSeatHeat = clamped.rearRightSeat,
-            durationMinutes = durationMinutes,
-            isEv = vehicle.isEV,
-            registrationId = vehicle.regId,
-            generation = vehicle.generation,
-            brandIndicator = vehicle.brandIndicator
-        )
     }
 
     fun stopClimate() = sendCommand(
@@ -940,9 +950,17 @@ class VehicleViewModel @Inject constructor(
     // ─── Settings updates ──────────────────────────────────────────────────────
     fun updateRemoteStartSettings(settings: RemoteStartSettings) {
         _remoteStartSettings.value = settings
+        rememberClimateDefaults(settings.tempF, settings.durationMinutes)
+    }
+
+    private fun rememberClimateDefaults(tempF: String, durationMinutes: Int) {
+        _remoteStartSettings.value = _remoteStartSettings.value.copy(
+            tempF = tempF,
+            durationMinutes = durationMinutes
+        )
         viewModelScope.launch {
-            preferencesManager.setDefaultClimateTemp(settings.tempF)
-            preferencesManager.setDefaultClimateDurationMinutes(settings.durationMinutes)
+            preferencesManager.setDefaultClimateTemp(tempF)
+            preferencesManager.setDefaultClimateDurationMinutes(durationMinutes)
         }
     }
 
