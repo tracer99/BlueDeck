@@ -103,6 +103,9 @@ class VehicleViewModel @Inject constructor(
     val region = preferencesManager.region
         .stateIn(viewModelScope, SharingStarted.Eagerly, "US_HYUNDAI")
 
+    val demoMode = preferencesManager.demoMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val timeZoneMode = preferencesManager.timeZoneMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, "DEVICE")
 

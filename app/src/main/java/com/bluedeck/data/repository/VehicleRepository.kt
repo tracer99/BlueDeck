@@ -17,6 +17,7 @@ import com.bluedeck.data.auth.OtpDeliveryMethod
 import com.bluedeck.data.auth.OtpRequiredException
 import com.bluedeck.data.auth.OTP_REQUIRED_CODE
 import com.bluedeck.data.auth.PendingOtpChallenge
+import com.bluedeck.data.demo.DemoVehicleStore
 import com.bluedeck.data.models.*
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -39,7 +40,8 @@ sealed class Result<out T> {
 @Singleton
 class VehicleRepository @Inject constructor(
     private val preferencesManager: PreferencesManager,
-    private val secureCredentialsManager: SecureCredentialsManager
+    private val secureCredentialsManager: SecureCredentialsManager,
+    private val demoVehicleStore: DemoVehicleStore
 ) {
     private var apiClient: ApiClient? = null
     private var apiClientRegion: Region? = null
@@ -2804,7 +2806,27 @@ class VehicleRepository @Inject constructor(
 
     // ─── Auth ──────────────────────────────────────────────────────────────────
 
+    suspend fun enterDemoMode(): Result<Unit> {
+        demoVehicleStore.reset()
+        preferencesManager.setDemoMode(true)
+        preferencesManager.setStayLoggedIn30Days(true)
+        preferencesManager.saveSession(
+            accessToken = "demo-access-token",
+            refreshToken = "demo-refresh-token",
+            username = DemoVehicleStore.DEMO_USERNAME,
+            expiresIn = 30 * 24 * 60 * 60,
+            servicePin = DemoVehicleStore.DEMO_PIN
+        )
+        val firstVin = demoVehicleStore.getVehicles().firstOrNull()?.vin
+        if (!firstVin.isNullOrBlank()) {
+            preferencesManager.setSelectedVin(firstVin)
+        }
+        return Result.Success(Unit)
+    }
+
     suspend fun login(username: String, password: String, servicePin: String = ""): Result<Unit> {
+        demoVehicleStore.clear()
+        preferencesManager.setDemoMode(false)
         if (isKiaUsRegion()) return loginKiaUs(username, password, servicePin)
         if (isCanadaRegion()) return loginCanada(username, password, servicePin)
         if (isEuropeRegion()) return loginEurope(username, password, servicePin)
@@ -2854,6 +2876,7 @@ class VehicleRepository @Inject constructor(
         if (requirePassword) {
             preferencesManager.clearOtpPending()
         }
+        demoVehicleStore.clear()
         preferencesManager.clearSession(requirePassword = requirePassword)
         apiClient = null
         apiClientRegion = null
@@ -2874,6 +2897,9 @@ class VehicleRepository @Inject constructor(
     // ─── Vehicles ──────────────────────────────────────────────────────────────
 
     suspend fun getVehicles(): Result<List<Vehicle>> {
+        if (preferencesManager.isDemoMode()) {
+            return Result.Success(demoVehicleStore.getVehicles())
+        }
         if (isKiaUsRegion()) return getKiaUsVehicles()
         if (isCanadaRegion()) return getCanadaVehicles()
         if (isEuropeRegion()) return getEuropeVehicles()
@@ -2942,6 +2968,11 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<VehicleStatusData> {
+        if (preferencesManager.isDemoMode()) {
+            val status = demoVehicleStore.getStatus(vin)
+            preferencesManager.setLastStatusRefresh(System.currentTimeMillis())
+            return Result.Success(status)
+        }
         if (isKiaUsRegion()) return getKiaUsVehicleStatus(vin, forceRefresh, registrationId)
         if (isCanadaRegion()) return getCanadaVehicleStatus(vin, forceRefresh, registrationId)
         if (isEuropeRegion()) return getEuropeVehicleStatus(vin, forceRefresh, registrationId, generation)
@@ -2982,6 +3013,9 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<VehicleLocation> {
+        if (preferencesManager.isDemoMode()) {
+            return Result.Success(demoVehicleStore.getLocation(vin))
+        }
         if (isKiaUsRegion()) return Result.Error("Vehicle location for USA Kia is returned in the status payload but is not mapped into the BlueDeck location model yet.")
         if (isCanadaRegion()) return Result.Error("Vehicle location for Canada is not mapped yet.")
         if (isEuropeRegion()) return Result.Error("Vehicle location for Europe is not mapped into the BlueDeck location model yet.")
@@ -3019,6 +3053,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.lockDoors(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId, "Lock") { sid, vehicleKey ->
                 getKiaUsApiService().lockDoors(sid, vehicleKey)
@@ -3074,6 +3112,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.unlockDoors(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId, "Unlock") { sid, vehicleKey ->
                 getKiaUsApiService().unlockDoors(sid, vehicleKey)
@@ -3141,6 +3183,20 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.startClimate(
+                vin = vin,
+                tempF = tempF,
+                defrost = defrost,
+                heatedSteering = heatedSteering,
+                driverSeatHeat = driverSeatHeat,
+                passengerSeatHeat = passengerSeatHeat,
+                rearLeftSeatHeat = rearLeftSeatHeat,
+                rearRightSeatHeat = rearRightSeatHeat,
+                isEv = isEv
+            )
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId, "Start") { sid, vehicleKey ->
                 getKiaUsApiService().startClimate(
@@ -3246,6 +3302,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.stopClimate(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId, "Stop") { sid, vehicleKey ->
                 getKiaUsApiService().stopClimate(sid, vehicleKey)
@@ -3300,6 +3360,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.stopClimate(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId, "Stop Climate") { sid, vehicleKey ->
                 getKiaUsApiService().stopClimate(sid, vehicleKey)
@@ -3448,6 +3512,10 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H",
         vehicleId: String = ""
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.startCharging(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId.ifBlank { vehicleId }, "Charge start") { sid, kiaVehicleKey ->
                 getKiaUsApiService().startCharging(
@@ -3508,6 +3576,10 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H",
         vehicleId: String = ""
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.stopCharging(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             return runKiaUsCommand(vin, registrationId.ifBlank { vehicleId }, "Charge stop") { sid, kiaVehicleKey ->
                 getKiaUsApiService().stopCharging(sid, kiaVehicleKey)
@@ -3703,6 +3775,17 @@ class VehicleRepository @Inject constructor(
         brandIndicator: String = "H",
         vehicleId: String = ""
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.setChargingSchedule(
+                vin = vin,
+                chargeStartTime = chargeStartTime,
+                chargeEndTime = chargeEndTime,
+                offPeakStartTime = offPeakStartTime,
+                offPeakEndTime = offPeakEndTime,
+                offPeakOnly = offPeakOnly
+            )
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) return Result.Error("USA Kia charging schedule setting is not mapped yet; start/stop charging and charge target setting are available.")
         if (isCanadaRegion()) return Result.Error("Canadian charging schedule setting is not mapped yet.")
         if (isAustraliaRegion()) return Result.Error("Australia/NZ charging schedule setting is not mapped yet.")
@@ -3765,6 +3848,14 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            val allowedTargets = setOf(50, 60, 70, 80, 90, 100)
+            if (acTarget !in allowedTargets || dcTarget !in allowedTargets) {
+                return Result.Error("Charge targets must be one of 50, 60, 70, 80, 90, or 100%")
+            }
+            demoVehicleStore.setChargeTargets(vin, acTarget, dcTarget)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) {
             val allowedTargets = setOf(50, 60, 70, 80, 90, 100)
             if (acTarget !in allowedTargets || dcTarget !in allowedTargets) {
@@ -3839,6 +3930,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.hornAndLights(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) return Result.Error("Horn/lights for USA Kia is not mapped yet.")
         if (isCanadaRegion()) return Result.Error("Horn/lights for Canada is not mapped yet.")
         if (isEuropeRegion()) return Result.Error("Horn/lights for Europe is not mapped yet.")
@@ -3871,6 +3966,10 @@ class VehicleRepository @Inject constructor(
         generation: String = "3",
         brandIndicator: String = "H"
     ): Result<Unit> {
+        if (preferencesManager.isDemoMode()) {
+            demoVehicleStore.flashLights(vin)
+            return Result.Success(Unit)
+        }
         if (isKiaUsRegion()) return Result.Error("Flash lights for USA Kia is not mapped yet.")
         if (isCanadaRegion()) return Result.Error("Flash lights for Canada is not mapped yet.")
         if (isEuropeRegion()) return Result.Error("Flash lights for Europe is not mapped yet.")

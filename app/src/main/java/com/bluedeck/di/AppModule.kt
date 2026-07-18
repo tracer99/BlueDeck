@@ -1,6 +1,7 @@
 package com.bluedeck.di
 
 import android.content.Context
+import com.bluedeck.data.demo.DemoVehicleStore
 import com.bluedeck.data.repository.PreferencesManager
 import com.bluedeck.data.repository.SecureCredentialsManager
 import com.bluedeck.data.repository.VehicleRepository
@@ -24,7 +25,8 @@ object AppModule {
     @Singleton
     fun provideVehicleRepository(
         preferencesManager: PreferencesManager,
-        secureCredentialsManager: SecureCredentialsManager
+        secureCredentialsManager: SecureCredentialsManager,
+        demoVehicleStore: DemoVehicleStore
     ): VehicleRepository =
-        VehicleRepository(preferencesManager, secureCredentialsManager)
+        VehicleRepository(preferencesManager, secureCredentialsManager, demoVehicleStore)
 }

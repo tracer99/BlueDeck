@@ -185,6 +185,32 @@ fun LoginScreen(
                             )
                         }
                     }
+                    if (!otpRequired) {
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { authViewModel.enterDemoMode() },
+                            enabled = !uiState.isLoading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Text(
+                                "Try Demo Mode",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Text(
+                            text = "Explore BlueDeck with a demo IONIQ 5 and EV6 — no account required.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        )
+                    }
                 }
             }
         }

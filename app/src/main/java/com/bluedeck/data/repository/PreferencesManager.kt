@@ -40,6 +40,7 @@ class PreferencesManager @Inject constructor(
         val PASSWORD_REQUIRED = booleanPreferencesKey("password_required")
         val OTP_PENDING = booleanPreferencesKey("otp_pending")
         val OTP_PENDING_USERNAME = stringPreferencesKey("otp_pending_username")
+        val DEMO_MODE = booleanPreferencesKey("demo_mode")
         val SELECTED_VIN = stringPreferencesKey("selected_vin")
         val REGION = stringPreferencesKey("region")
         val TEMPERATURE_UNIT = stringPreferencesKey("temp_unit")
@@ -150,6 +151,10 @@ class PreferencesManager @Inject constructor(
     val otpPendingUsername: Flow<String?> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[OTP_PENDING_USERNAME] }
+
+    val demoMode: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[DEMO_MODE] ?: false }
 
     val hasRecoverableSession: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -458,6 +463,7 @@ class PreferencesManager @Inject constructor(
             prefs.remove(SERVICE_PIN)
             prefs.remove(TOKEN_EXPIRES_AT)
             prefs.remove(SESSION_EXPIRES_AT)
+            prefs[DEMO_MODE] = false
             prefs[PASSWORD_REQUIRED] = requirePassword
             if (!requirePassword) {
                 prefs[OTP_PENDING] = false
@@ -465,6 +471,12 @@ class PreferencesManager @Inject constructor(
             }
         }
     }
+
+    suspend fun setDemoMode(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[DEMO_MODE] = enabled }
+    }
+
+    suspend fun isDemoMode(): Boolean = dataStore.data.first()[DEMO_MODE] ?: false
 
     suspend fun setSelectedVin(vin: String) {
         dataStore.edit { it[SELECTED_VIN] = vin }

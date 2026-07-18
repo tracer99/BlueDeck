@@ -460,7 +460,11 @@ open class VehicleWidgetProvider : AppWidgetProvider() {
 
         private suspend fun handleWidgetAction(context: Context, action: String) {
             val preferencesManager = PreferencesManager(context.applicationContext)
-            val repository = VehicleRepository(preferencesManager, SecureCredentialsManager(context.applicationContext))
+            val repository = VehicleRepository(
+                preferencesManager,
+                SecureCredentialsManager(context.applicationContext),
+                com.bluedeck.data.demo.DemoVehicleStore()
+            )
             val actionLabel = when (action) {
                 ACTION_REFRESH -> "Widget refresh"
                 ACTION_LOCK -> "Widget lock"

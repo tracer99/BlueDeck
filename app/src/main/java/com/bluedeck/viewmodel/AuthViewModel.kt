@@ -309,4 +309,19 @@ class AuthViewModel @Inject constructor(
     fun clearError() {
         _loginUiState.value = _loginUiState.value.copy(error = null)
     }
+
+    fun enterDemoMode() {
+        viewModelScope.launch {
+            _loginUiState.value = LoginUiState(isLoading = true)
+            when (val result = repository.enterDemoMode()) {
+                is Result.Success -> {
+                    pendingLoginCredentials = null
+                    _loginUiState.value = LoginUiState(success = true)
+                }
+                is Result.Error -> {
+                    _loginUiState.value = LoginUiState(error = result.message)
+                }
+            }
+        }
+    }
 }

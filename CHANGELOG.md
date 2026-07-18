@@ -13,6 +13,12 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.11.0] - 2026-07-17
+
+### Added
+
+- Demo mode for Google Play verification: tap **Try Demo Mode** on the login screen to explore BlueDeck with a fake Hyundai IONIQ 5 and Kia EV6. Remote actions update local mock state and never call Blue Link APIs.
+
 ## [1.10.1] - 2026-07-17
 
 ### Fixed

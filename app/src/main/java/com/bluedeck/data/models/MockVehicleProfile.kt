@@ -25,6 +25,11 @@ enum class MockVehicleProfile(
         displayName = "IONIQ 5 EV · unplugged",
         description = "EV status with moderate battery, no plug, and climate off"
     ),
+    EV6_UNPLUGGED(
+        id = "ev6_unplugged",
+        displayName = "EV6 · unplugged",
+        description = "Kia EV6 with moderate battery, no plug, and climate off"
+    ),
     IONIQ_6_LOW_BATTERY(
         id = "ioniq_6_low_battery",
         displayName = "IONIQ 6 EV · low battery",
@@ -112,7 +117,7 @@ enum class MockVehicleProfile(
                 vehicleIdentifier = "mock-ioniq5",
                 enrollmentId = "mock-ioniq5-enrollment",
                 regId = "mock-ioniq5-registration",
-                nickname = "Mock IONIQ 5",
+                nickname = "Demo IONIQ 5",
                 modelCode = "IONIQ 5",
                 modelName = "IONIQ 5 Limited",
                 modelYear = "2025",
@@ -126,6 +131,30 @@ enum class MockVehicleProfile(
                     v2lOption = "Y",
                     batteryPreconditioningOption = "Y",
                     chargePortDoorOption = "Y",
+                    targetSocLevelMax = 100
+                ),
+                seatConfigurations = mockSeatConfigurations()
+            )
+            EV6_UNPLUGGED -> base.copy(
+                vin = "MOCK-EV6-UNPLUGGED",
+                vehicleIdentifier = "mock-ev6",
+                enrollmentId = "mock-ev6-enrollment",
+                regId = "mock-ev6-registration",
+                nickname = "Demo EV6",
+                modelCode = "EV6",
+                modelName = "EV6 GT-Line",
+                modelYear = "2025",
+                colorName = "Yacht Blue",
+                brandIndicator = "K",
+                odometer = 6432,
+                additionalDetails = AdditionalVehicleDetails(
+                    digitalKeyCapable = "Y",
+                    digitalKeyEnrolled = "Y",
+                    digitalKeyType = "DK2",
+                    v2lOption = "Y",
+                    batteryPreconditioningOption = "Y",
+                    chargePortDoorOption = "Y",
+                    wifiHotspotCapable = "Y",
                     targetSocLevelMax = 100
                 ),
                 seatConfigurations = mockSeatConfigurations()
@@ -336,6 +365,24 @@ enum class MockVehicleProfile(
             tirePressureLamp = TirePressure(),
             tirePressureStatus = TirePressureStatus(35, 35, 35, 35),
             totalMileage = 8721
+        )
+        EV6_UNPLUGGED -> VehicleStatusData(
+            doorLock = true,
+            doorLockStatus = "LOCKED",
+            airCtrlOn = false,
+            battery = BatteryStatus(batteryLevel = 90),
+            evStatus = evStatus(
+                batteryStatus = 71,
+                batteryPlugin = 0,
+                batteryCharge = false,
+                chargingPowerKw = null,
+                rangeMiles = 218.0,
+                acTarget = 80,
+                dcTarget = 80
+            ),
+            tirePressureLamp = TirePressure(),
+            tirePressureStatus = TirePressureStatus(36, 36, 35, 36),
+            totalMileage = 6432
         )
         IONIQ_6_LOW_BATTERY -> VehicleStatusData(
             doorLock = false,

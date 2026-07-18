@@ -102,6 +102,7 @@ fun DashboardScreen(
     val distanceUnit by vehicleViewModel.distanceUnit.collectAsStateWithLifecycle()
     val customDashboardImageUri by vehicleViewModel.customDashboardImageUri.collectAsStateWithLifecycle()
     val region by vehicleViewModel.region.collectAsStateWithLifecycle()
+    val demoMode by vehicleViewModel.demoMode.collectAsStateWithLifecycle()
     val remoteStartSettings by vehicleViewModel.remoteStartSettings.collectAsStateWithLifecycle()
     val featureCaps = remember(selectedVehicle, region) {
         selectedVehicle?.resolveCapabilities(region)
@@ -193,6 +194,23 @@ fun DashboardScreen(
                 .padding(padding)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                AnimatedVisibility(
+                    visible = demoMode,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Demo mode — not connected to a vehicle",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
                 AnimatedVisibility(
                     visible = commandState.status != CommandStatus.IDLE,
                     enter = expandVertically() + fadeIn(),

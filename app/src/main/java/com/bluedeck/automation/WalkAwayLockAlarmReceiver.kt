@@ -44,7 +44,8 @@ class WalkAwayLockAlarmReceiver : BroadcastReceiver() {
         val result = withTimeoutOrNull(30_000L) {
             val repository = VehicleRepository(
                 preferencesManager,
-                SecureCredentialsManager(context)
+                SecureCredentialsManager(context),
+                com.bluedeck.data.demo.DemoVehicleStore()
             )
             val vehicle = selectedVehicle(repository, preferencesManager)
                 ?: return@withTimeoutOrNull Result.Error(
