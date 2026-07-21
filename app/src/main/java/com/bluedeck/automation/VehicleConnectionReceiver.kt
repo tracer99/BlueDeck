@@ -1,10 +1,7 @@
 package com.bluedeck.automation
 
 import android.Manifest
-import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothHeadset
-import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -49,30 +46,14 @@ class VehicleConnectionReceiver : BroadcastReceiver() {
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
                         Log.i(TAG, "Selected vehicle Bluetooth connected; cancelling pending lock")
                         WalkAwayLockScheduler.cancel(context)
+                        WalkAwayBluetoothMonitorService.start(context)
                     }
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                         Log.i(TAG, "Selected vehicle Bluetooth ACL disconnected")
-                        WalkAwayLockScheduler.schedule(
+                        WalkAwayLockScheduler.scheduleSuspending(
                             context,
                             prefs.walkAwayLockDelaySeconds.first()
                         )
-                    }
-                    BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED,
-                    BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED -> {
-                        val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1)
-                        when (state) {
-                            BluetoothProfile.STATE_CONNECTED -> {
-                                Log.i(TAG, "Selected vehicle profile connected; cancelling pending lock")
-                                WalkAwayLockScheduler.cancel(context)
-                            }
-                            BluetoothProfile.STATE_DISCONNECTED -> {
-                                Log.i(TAG, "Selected vehicle profile disconnected")
-                                WalkAwayLockScheduler.schedule(
-                                    context,
-                                    prefs.walkAwayLockDelaySeconds.first()
-                                )
-                            }
-                        }
                     }
                 }
             } finally {
@@ -95,9 +76,7 @@ class VehicleConnectionReceiver : BroadcastReceiver() {
 
         private val HANDLED_ACTIONS = setOf(
             BluetoothDevice.ACTION_ACL_CONNECTED,
-            BluetoothDevice.ACTION_ACL_DISCONNECTED,
-            BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED,
-            BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED
+            BluetoothDevice.ACTION_ACL_DISCONNECTED
         )
     }
 }

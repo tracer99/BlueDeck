@@ -54,6 +54,7 @@ class PreferencesManager @Inject constructor(
         val WALK_AWAY_LOCK_DELAY_SECONDS = intPreferencesKey("walk_away_lock_delay_seconds")
         val WALK_AWAY_BLUETOOTH_ADDRESS = stringPreferencesKey("walk_away_bluetooth_address")
         val WALK_AWAY_BLUETOOTH_NAME = stringPreferencesKey("walk_away_bluetooth_name")
+        val WALK_AWAY_LOCK_PENDING = booleanPreferencesKey("walk_away_lock_pending")
         val LAST_STATUS_REFRESH = longPreferencesKey("last_status_refresh")
         val DEFAULT_CLIMATE_TEMP = stringPreferencesKey("default_climate_temp")
         val DEFAULT_CLIMATE_DURATION_MINUTES = intPreferencesKey("default_climate_duration_minutes")
@@ -223,6 +224,10 @@ class PreferencesManager @Inject constructor(
     val walkAwayBluetoothName: Flow<String?> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[WALK_AWAY_BLUETOOTH_NAME] }
+
+    val walkAwayLockPending: Flow<Boolean> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[WALK_AWAY_LOCK_PENDING] ?: false }
 
     val obdTransportType: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -575,7 +580,10 @@ class PreferencesManager @Inject constructor(
     }
 
     suspend fun setWalkAwayLockEnabled(enabled: Boolean) {
-        dataStore.edit { prefs -> prefs[WALK_AWAY_LOCK_ENABLED] = enabled }
+        dataStore.edit { prefs ->
+            prefs[WALK_AWAY_LOCK_ENABLED] = enabled
+            if (!enabled) prefs[WALK_AWAY_LOCK_PENDING] = false
+        }
     }
 
     suspend fun setWalkAwayLockDelaySeconds(seconds: Int) {
@@ -594,7 +602,24 @@ class PreferencesManager @Inject constructor(
             prefs.remove(WALK_AWAY_BLUETOOTH_NAME)
             prefs.remove(WALK_AWAY_BLUETOOTH_ADDRESS)
             prefs[WALK_AWAY_LOCK_ENABLED] = false
+            prefs[WALK_AWAY_LOCK_PENDING] = false
         }
+    }
+
+    /** Returns true if this call transitioned pending from false → true. */
+    suspend fun tryMarkWalkAwayLockPending(): Boolean {
+        var marked = false
+        dataStore.edit { prefs ->
+            if (prefs[WALK_AWAY_LOCK_PENDING] != true) {
+                prefs[WALK_AWAY_LOCK_PENDING] = true
+                marked = true
+            }
+        }
+        return marked
+    }
+
+    suspend fun setWalkAwayLockPending(pending: Boolean) {
+        dataStore.edit { prefs -> prefs[WALK_AWAY_LOCK_PENDING] = pending }
     }
 
     suspend fun setObdTransportType(type: ObdTransportType) {

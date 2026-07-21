@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.bluedeck.data.api.Region
 import com.bluedeck.data.models.CommandHistoryEntry
 import com.bluedeck.data.models.Vehicle
 import com.bluedeck.data.repository.PreferencesManager
@@ -19,12 +20,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 class WalkAwayLockAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
+        val appContext = context.applicationContext
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                executeLock(context.applicationContext)
+                executeLock(appContext)
             } finally {
-                WalkAwayLockScheduler.markNotPending()
+                WalkAwayLockScheduler.clearPendingSuspending(appContext)
+                WalkAwayBluetoothMonitorService.stop(appContext)
                 pendingResult.finish()
             }
         }
@@ -38,6 +41,27 @@ class WalkAwayLockAlarmReceiver : BroadcastReceiver() {
         }
 
         val deviceName = preferencesManager.walkAwayBluetoothName.first() ?: "vehicle"
+        val region = runCatching {
+            Region.valueOf(preferencesManager.region.first())
+        }.getOrDefault(Region.US_HYUNDAI)
+        if (region.isCanada && preferencesManager.effectiveServicePin().isBlank()) {
+            val message = "Canada Bluelink PIN is required for walk-away lock. Save your PIN in Settings."
+            preferencesManager.addCommandHistoryEntry(
+                CommandHistoryEntry(
+                    timestampMillis = System.currentTimeMillis(),
+                    title = "Walk-away lock",
+                    detail = message,
+                    successful = false,
+                    vehicleName = deviceName
+                )
+            )
+            preferencesManager.setWidgetMessage(message.take(42))
+            VehicleWidgetProvider.refreshAll(context)
+            WalkAwayNotifications.notifyEvent(context, "Walk-away lock failed", message)
+            Log.w(TAG, message)
+            return
+        }
+
         preferencesManager.setWidgetMessage("Walk-away locking…")
         VehicleWidgetProvider.refreshAll(context)
 

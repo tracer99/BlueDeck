@@ -13,6 +13,18 @@ BlueDeck is a fork of [BlueBridge for Android](https://github.com/Nelwyn99) by N
 
 See `.cursor/rules/release-workflow.mdc` for agent workflow details.
 
+## [1.12.1] - 2026-07-20
+
+### Fixed
+
+- Walk-Away Lock: start the monitoring notification only when the selected vehicle Bluetooth connects (including after Android Auto/Bluetooth connect without opening the app), schedule lock on ACL disconnect, and clear the notification after the lock attempt.
+- Walk-Away Lock: stop running a forever foreground service while the feature is merely enabled, reducing idle battery use.
+
+### Changed
+
+- Walk-Away Lock triggers on Bluetooth ACL connect/disconnect only (ignores HFP/A2DP profile flaps).
+- Settings → Automation: prompts to allow unrestricted battery use and exact alarms when Walk-Away Lock is enabled.
+
 ## [1.12.0] - 2026-07-17
 
 ### Added

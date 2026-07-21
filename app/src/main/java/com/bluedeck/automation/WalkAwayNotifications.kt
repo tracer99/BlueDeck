@@ -26,7 +26,7 @@ internal object WalkAwayNotifications {
                 "Walk-away lock",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows while BlueDeck is monitoring vehicle Bluetooth for walk-away lock"
+                description = "Shows while connected to the selected vehicle Bluetooth for walk-away lock"
             }
         )
         manager.createNotificationChannel(

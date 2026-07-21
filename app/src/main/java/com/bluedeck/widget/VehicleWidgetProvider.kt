@@ -754,12 +754,9 @@ class BootReceiver : android.content.BroadcastReceiver() {
             val pending = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val prefs = PreferencesManager(context.applicationContext)
-                    val enabled = prefs.walkAwayLockEnabled.first()
-                    val selectedDevice = prefs.walkAwayBluetoothAddress.first()
-                    if (enabled && !selectedDevice.isNullOrBlank()) {
-                        com.bluedeck.automation.WalkAwayBluetoothMonitorService.start(context)
-                    }
+                    com.bluedeck.automation.WalkAwayBluetooth.startMonitorIfConnectedSuspending(
+                        context.applicationContext
+                    )
                 } finally {
                     pending.finish()
                 }

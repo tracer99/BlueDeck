@@ -1,10 +1,15 @@
 package com.bluedeck.ui.screens
 
 import android.Manifest
+import android.app.AlarmManager
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -36,8 +41,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bluedeck.BuildConfig
+import com.bluedeck.automation.WalkAwayBluetooth
 import com.bluedeck.automation.WalkAwayBluetoothMonitorService
 import com.bluedeck.automation.WalkAwayLockScheduler
 import com.bluedeck.data.api.Region
@@ -73,6 +82,23 @@ fun SettingsScreen(
     val servicePin by viewModel.servicePin.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var permissionRefreshTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) permissionRefreshTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val batteryUnrestricted = remember(permissionRefreshTick) {
+        context.getSystemService(PowerManager::class.java)
+            ?.isIgnoringBatteryOptimizations(context.packageName) == true
+    }
+    val exactAlarmsAllowed = remember(permissionRefreshTick) {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == true
+    }
 
     LaunchedEffect(distanceUnit) {
         VehicleWidgetProvider.refreshAll(context)
@@ -568,7 +594,11 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    if (walkAwayBluetoothAddress.isNullOrBlank()) "Select vehicle Bluetooth first" else "Lock after vehicle Bluetooth disconnects",
+                                    if (walkAwayBluetoothAddress.isNullOrBlank()) {
+                                        "Select vehicle Bluetooth first"
+                                    } else {
+                                        "Locks after selected Bluetooth disconnects"
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                 )
@@ -586,7 +616,7 @@ fun SettingsScreen(
                                 } else {
                                     viewModel.setWalkAwayLockEnabled(enabled)
                                     if (enabled) {
-                                        WalkAwayBluetoothMonitorService.start(context)
+                                        WalkAwayBluetooth.startMonitorIfConnected(context)
                                     } else {
                                         WalkAwayBluetoothMonitorService.stop(context)
                                         WalkAwayLockScheduler.cancel(context)
@@ -659,6 +689,43 @@ fun SettingsScreen(
                         modifier = Modifier.padding(start = 32.dp, end = 8.dp, bottom = 4.dp)
                     )
 
+                    if (walkAwayLockEnabled) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                        SettingsRow(
+                            icon = Icons.Filled.BatteryChargingFull,
+                            label = "Unrestricted battery",
+                            value = if (batteryUnrestricted) "Allowed" else "Required",
+                            onClick = {
+                                try {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                    )
+                                } catch (_: Exception) {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    )
+                                }
+                            }
+                        )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                            SettingsRow(
+                                icon = Icons.Filled.Alarm,
+                                label = "Exact alarms",
+                                value = if (exactAlarmsAllowed) "Allowed" else "Required",
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    }
+
                     bluetoothPermissionMessage?.let { message ->
                         Text(
                             message,
@@ -680,7 +747,7 @@ fun SettingsScreen(
                     }
 
                     Text(
-                        "Experimental: Android background limits, phone battery optimization, network connectivity, or Hyundai/Kia API availability can prevent automatic locking. Always verify the vehicle is locked.",
+                        "The monitoring notification appears only while connected to the selected vehicle Bluetooth, then clears after lock (or if you disable the feature). Experimental: OEM battery limits, network issues, or Hyundai/Kia API availability can still prevent automatic locking. Always verify the vehicle is locked.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                         modifier = Modifier.padding(top = 4.dp)
@@ -745,7 +812,7 @@ fun SettingsScreen(
                                     .clickable {
                                         viewModel.setWalkAwayBluetoothDevice(device.name, device.address)
                                         viewModel.setWalkAwayLockEnabled(true)
-                                        WalkAwayBluetoothMonitorService.start(context)
+                                        WalkAwayBluetooth.startMonitorIfConnected(context)
                                         showBluetoothPicker = false
                                     }
                                     .padding(vertical = 12.dp),
@@ -756,7 +823,7 @@ fun SettingsScreen(
                                     onClick = {
                                         viewModel.setWalkAwayBluetoothDevice(device.name, device.address)
                                         viewModel.setWalkAwayLockEnabled(true)
-                                        WalkAwayBluetoothMonitorService.start(context)
+                                        WalkAwayBluetooth.startMonitorIfConnected(context)
                                         showBluetoothPicker = false
                                     }
                                 )
